@@ -281,7 +281,7 @@ function mapCfServer(raw: Record<string, any>): HubNode {
     ? raw.load_avg.map(Number).filter(Number.isFinite)
     : typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(/[ ,]+/).map(Number).filter(Number.isFinite) : []
   const trafficText = text(raw.traffic_limit)
-  const match = trafficText.match(/^([\\d.]+)\\s*(B|KB|MB|GB|TB)$/i)
+  const match = trafficText.match(/^([\d.]+)\s*(B|KB|MB|GB|TB)$/i)
   const trafficLimit = match
     ? Number(match[1]) * ({ B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }[match[2].toUpperCase() as 'B' | 'KB' | 'MB' | 'GB' | 'TB'])
     : num(raw.traffic_limit)
