@@ -347,8 +347,8 @@ async function fetchRecords() {
   error.value = null
 
   try {
-    // CFSM 详情只使用 /api/servers 附带的真实 Ping 采样窗口。
-    // /api/history/all 是性能历史接口，不包含 Ping 历史，不能拿它拼造曲线。
+    // CFSM 的近期窗口与 /api/history/all 历史行都包含真实 Ping 样本；
+    // fetchNodeHistory 会按真实 timestamp 合并并去重，不用性能指标拼造延迟曲线。
     if (isCfServer(requestedUuid)) {
       const history = await fetchNodeHistory(requestedUuid, { hours: selectedHours.value, series: 'ping' })
       if (sequence !== fetchRecordsSequence || requestedUuid !== props.uuid)
