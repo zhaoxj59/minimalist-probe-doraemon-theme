@@ -52,6 +52,10 @@ function formatSpeed(bytes: number): string {
   return formatBytesPerSecondWithConfig(bytes, appStore.byteDecimals)
 }
 
+function hasMetrics(node: NodeData): boolean {
+  return node.message !== 'unavailable'
+}
+
 function clampPercentage(value: number): number {
   return Math.min(100, Math.max(0, Number.isFinite(value) ? value : 0))
 }
@@ -61,12 +65,12 @@ const compareMetrics = computed<CompareMetric[]>(() => {
     { key: 'status', label: '状态', value: node => node.online ? '元气满满' : '待机充电中' },
     { key: 'cpuModel', label: 'CPU 型号', value: node => node.cpu_name || '-' },
     { key: 'cpuCores', label: 'vCPU', value: node => `${node.cpu_cores || 0} 核` },
-    { key: 'cpu', label: '竹蜻蜓转速', value: node => `${(node.cpu || 0).toFixed(1)}%`, percentage: node => node.cpu || 0 },
-    { key: 'load', label: '铜锣烧消耗指数', value: node => `${(node.load || 0).toFixed(2)} / ${(node.load5 || 0).toFixed(2)} / ${(node.load15 || 0).toFixed(2)}` },
-    { key: 'memory', label: '四次元口袋', value: node => `${formatBytes(node.ram || 0)} / ${formatBytes(node.mem_total || 0)}`, percentage: getMemoryPercentage },
-    { key: 'disk', label: '百宝袋', value: node => `${formatBytes(node.disk || 0)} / ${formatBytes(node.disk_total || 0)}`, percentage: getDiskPercentage },
-    { key: 'network', label: '实时网络', value: node => `↑ ${formatSpeed(node.net_out || 0)}  ↓ ${formatSpeed(node.net_in || 0)}` },
-    { key: 'traffic', label: '累计流量', value: node => `${formatBytes(node.net_total_up || 0)} ↑ / ${formatBytes(node.net_total_down || 0)} ↓` },
+    { key: 'cpu', label: '竹蜻蜓转速', value: node => hasMetrics(node) && Number.isFinite(node.cpu) ? `${node.cpu.toFixed(1)}%` : '-', percentage: node => hasMetrics(node) && Number.isFinite(node.cpu) ? node.cpu : null },
+    { key: 'load', label: '铜锣烧消耗指数', value: node => hasMetrics(node) ? `${(node.load || 0).toFixed(2)} / ${(node.load5 || 0).toFixed(2)} / ${(node.load15 || 0).toFixed(2)}` : '-' },
+    { key: 'memory', label: '四次元口袋', value: node => hasMetrics(node) ? `${formatBytes(node.ram || 0)} / ${formatBytes(node.mem_total || 0)}` : '-', percentage: node => hasMetrics(node) ? getMemoryPercentage(node) : null },
+    { key: 'disk', label: '百宝袋', value: node => hasMetrics(node) ? `${formatBytes(node.disk || 0)} / ${formatBytes(node.disk_total || 0)}` : '-', percentage: node => hasMetrics(node) ? getDiskPercentage(node) : null },
+    { key: 'network', label: '实时网络', value: node => hasMetrics(node) ? `↑ ${formatSpeed(node.net_out || 0)}  ↓ ${formatSpeed(node.net_in || 0)}` : '-' },
+    { key: 'traffic', label: '累计流量', value: node => hasMetrics(node) ? `${formatBytes(node.net_total_up || 0)} ↑ / ${formatBytes(node.net_total_down || 0)} ↓` : '-' },
     {
       key: 'trafficQuota',
       label: '流量配额',
