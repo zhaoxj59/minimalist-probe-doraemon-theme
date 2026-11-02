@@ -495,9 +495,12 @@ const historyCache = new Map<string, { at: number, promise: Promise<HubHistory> 
 const HISTORY_CACHE_MS = 15_000
 
 export function fetchNodeHistory(id: string | number, query: HistoryQuery, signal?: AbortSignal): Promise<HubHistory> {
-  const hours = Math.min(24, Math.max(1, Math.floor(query.hours)))
-  const url = `/api/history/all?id=${encodeURIComponent(String(id))}&hours=${hours}`
-  const cached = historyCache.get(url)
+  // CFSM 仅接受固定 hours 档位；请求较大档位后，再按调用方要求的窗口在本地裁剪。
+  const requestedHours = Math.min(24, Math.max(1, Number.isFinite(query.hours) ? query.hours : 1))
+  const apiHours = [1, 6, 12, 24].find(value => value >= requestedHours) ?? 24
+  const url = `/api/history/all?id=${encodeURIComponent(String(id))}&hours=${apiHours}`
+  const cacheKey = `${url}|window=${requestedHours}`
+  const cached = historyCache.get(cacheKey)
   if (cached && Date.now() - cached.at < HISTORY_CACHE_MS)
     return cached.promise
   const promise = (async () => {
@@ -506,7 +509,16 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
       const n = typeof v === 'string' ? Number(v) : v
       return typeof n === 'number' && Number.isFinite(n) ? n : Number.NaN
     }
-    const historyRows = Array.isArray(rows) ? rows : []
+    const cutoffMs = Date.now() - requestedHours * 3_600_000
+    const timestampMs = (row: Record<string, any>) => {
+      const value = row.timestamp
+      const parsed = typeof value === 'string' && !Number.isFinite(Number(value)) ? Date.parse(value) : num(value)
+      return parsed > 1e12 ? parsed : parsed * 1000
+    }
+    const historyRows = (Array.isArray(rows) ? rows : []).filter(row => {
+      const ts = timestampMs(row)
+      return Number.isFinite(ts) && ts >= cutoffMs
+    })
     const metrics = historyRows.map(row => ({
       ts: (() => {
         const value = row.timestamp
@@ -532,9 +544,7 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
         const rawValue = row[field.ping]
         if (rawValue === false || rawValue === 'false' || rawValue === undefined)
           continue
-        const rawTs = row.timestamp
-        const parsedTs = typeof rawTs === 'string' && !Number.isFinite(Number(rawTs)) ? Date.parse(rawTs) : num(rawTs)
-        const ts = parsedTs > 1e12 ? parsedTs / 1000 : parsedTs
+        const ts = timestampMs(row) / 1000
         if (!Number.isFinite(ts) || ts <= 0)
           continue
         let latency: number | null
@@ -550,15 +560,13 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
         hasSample = true
         const rowPing: HubPingRow = { task_id: field.id, ts, latency }
         const rawLoss = row[field.loss]
-        if (rawLoss !== false && rawLoss !== 'false' && rawLoss !== undefined && rawLoss !== null) {
-          const parsedLoss = num(rawLoss)
-          if (Number.isFinite(parsedLoss)) {
-            rowPing.loss = parsedLoss
-            const values = lossSamples.get(field.id) ?? []
-            values.push(parsedLoss)
-            lossSamples.set(field.id, values)
-          }
-        }
+        const parsedLoss = rawLoss === false || rawLoss === 'false' || rawLoss === undefined || rawLoss === null
+          ? Number.NaN : num(rawLoss)
+        // 与指标查询的规则一致：明确超时按 100%，有效 RTT 且无丢包样本按 0%。
+        rowPing.loss = Number.isFinite(parsedLoss) ? parsedLoss : (latency === null ? 100 : 0)
+        const values = lossSamples.get(field.id) ?? []
+        values.push(rowPing.loss)
+        lossSamples.set(field.id, values)
         ping.push(rowPing)
       }
       if (hasSample)
@@ -587,10 +595,10 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
 
     return { metrics, ping: ping.sort((a, b) => a.ts - b.ts), probes, loss } satisfies HubHistory
   })()
-  historyCache.set(url, { at: Date.now(), promise })
+  historyCache.set(cacheKey, { at: Date.now(), promise })
   promise.catch(() => {
-    if (historyCache.get(url)?.promise === promise)
-      historyCache.delete(url)
+    if (historyCache.get(cacheKey)?.promise === promise)
+      historyCache.delete(cacheKey)
   })
   return promise
 }
