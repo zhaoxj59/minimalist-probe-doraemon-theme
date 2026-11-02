@@ -15,6 +15,7 @@ interface SnapshotRow {
   uuid: string
   name: string
   online: boolean
+  metricsAvailable: boolean
   group: string
   region: string
   ipv4: string
@@ -74,25 +75,25 @@ onMounted(async () => {
 })
 
 function formatBytes(bytes: number): string {
-  return formatBytesWithConfig(bytes, appStore.byteDecimals)
+  return Number.isFinite(bytes) ? formatBytesWithConfig(bytes, appStore.byteDecimals) : '-'
 }
 
 function formatSpeed(bytes: number): string {
-  return formatBytesPerSecondWithConfig(bytes, appStore.byteDecimals)
+  return Number.isFinite(bytes) ? formatBytesPerSecondWithConfig(bytes, appStore.byteDecimals) : '-'
 }
 
 function formatPercent(value: number): string {
-  return `${(Number.isFinite(value) ? value : 0).toFixed(1)}%`
+  return Number.isFinite(value) ? `${value.toFixed(1)}%` : '-'
 }
 
 function getPercent(used: number, total: number): number {
   if (!Number.isFinite(used) || !Number.isFinite(total) || total <= 0)
-    return 0
+    return Number.NaN
   return used / total * 100
 }
 
 function formatLoad(value: number): string {
-  return (Number.isFinite(value) ? value : 0).toFixed(2)
+  return Number.isFinite(value) ? value.toFixed(2) : '-'
 }
 
 function formatStatus(online: boolean): string {
@@ -156,6 +157,7 @@ function buildRow(node: NodeData): SnapshotRow {
     uuid: node.uuid,
     name: node.name,
     online: node.online,
+    metricsAvailable: node.message !== 'unavailable',
     group: node.group,
     region: node.region,
     ipv4: node.ipv4 || '',
@@ -168,17 +170,17 @@ function buildRow(node: NodeData): SnapshotRow {
     virtualization: node.virtualization,
     cpuName: node.cpu_name,
     cpuCores: node.cpu_cores || 0,
-    cpuUsage: node.cpu || 0,
-    load1: node.load || 0,
-    memoryUsedBytes: node.ram || 0,
+    cpuUsage: node.message === 'unavailable' ? Number.NaN : node.cpu,
+    load1: node.message === 'unavailable' ? Number.NaN : node.load,
+    memoryUsedBytes: node.message === 'unavailable' ? Number.NaN : node.ram,
     memoryTotalBytes: node.mem_total || 0,
     diskUsedBytes: node.disk || 0,
     diskTotalBytes: node.disk_total || 0,
     trafficUsedBytes: getTrafficUsed(node),
     trafficLimitBytes: node.traffic_limit || 0,
-    trafficUsedPercent: getTrafficUsedPercentage(node),
-    netInBytesPerSecond: node.net_in || 0,
-    netOutBytesPerSecond: node.net_out || 0,
+    trafficUsedPercent: node.message === 'unavailable' ? Number.NaN : getTrafficUsedPercentage(node),
+    netInBytesPerSecond: node.message === 'unavailable' ? Number.NaN : node.net_in,
+    netOutBytesPerSecond: node.message === 'unavailable' ? Number.NaN : node.net_out,
     uptimeSeconds: node.uptime || 0,
     price: node.price || 0,
     currency: node.currency,
@@ -204,6 +206,7 @@ const csvColumns: CsvColumn[] = [
   { label: '节点 ID', value: row => row.uuid },
   { label: '节点名称', value: row => row.name },
   { label: '状态', value: row => formatStatus(row.online) },
+  { label: '监控数据', value: row => row.metricsAvailable ? '可用' : '等待首份监控数据' },
   { label: '分组', value: row => row.group || '-' },
   { label: '地区', value: row => row.region || '-' },
   { label: 'IPv4', value: row => row.ipv4 || '-' },
