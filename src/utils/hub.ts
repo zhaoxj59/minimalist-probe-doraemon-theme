@@ -233,7 +233,8 @@ function buildCurrentPingHistory(raw: Record<string, any>, sysConfig: Record<str
           continue
         const nameField = CF_PROBE_FIELDS[probe.id - 1]
         const name = typeof sysConfig[nameField.config] === 'string' && sysConfig[nameField.config].trim()
-          ? sysConfig[nameField.config].trim() : nameField.fallback
+          ? sysConfig[nameField.config].trim()
+          : nameField.fallback
         probes[String(probe.id)] = name
         const lossValue = lossPoint?.[probe.key]
         const row: HubPingRow = { task_id: probe.id, ts, latency: value }
@@ -250,7 +251,8 @@ function buildCurrentPingHistory(raw: Record<string, any>, sysConfig: Record<str
 
   const rawTimestamp = raw.last_updated ?? raw.timestamp
   const parsed = typeof rawTimestamp === 'string' && !Number.isFinite(Number(rawTimestamp))
-    ? Date.parse(rawTimestamp) : Number(rawTimestamp)
+    ? Date.parse(rawTimestamp)
+    : Number(rawTimestamp)
   const currentTs = Number.isFinite(parsed) && parsed > 0
     ? (parsed > 1e12 ? parsed / 1000 : parsed)
     : Date.now() / 1000
@@ -266,7 +268,8 @@ function buildCurrentPingHistory(raw: Record<string, any>, sysConfig: Record<str
     if (value !== null && !(typeof value === 'number' && Number.isFinite(value)))
       continue
     const name = typeof sysConfig[probe.config] === 'string' && sysConfig[probe.config].trim()
-      ? sysConfig[probe.config].trim() : probe.fallback
+      ? sysConfig[probe.config].trim()
+      : probe.fallback
     probes[String(probe.id)] = name
     const row: HubPingRow = { task_id: probe.id, ts: currentTs, latency: value }
     if (typeof lossValue === 'number' && Number.isFinite(lossValue)) {
@@ -284,7 +287,6 @@ function buildCurrentPingHistory(raw: Record<string, any>, sysConfig: Record<str
   return { metrics: [], ping: ping.sort((a, b) => a.ts - b.ts), probes, loss }
 }
 
-
 /** 将 CFSM 单台服务器响应转换为主题内部节点结构。 */
 function mapCfServer(raw: Record<string, any>): HubNode {
   const id = String(raw.id)
@@ -296,8 +298,9 @@ function mapCfServer(raw: Record<string, any>): HubNode {
   // CFSM reports RAM / Swap / Disk capacities in MiB; the theme's formatBytes expects bytes.
   const mib = (v: unknown) => num(v) * 1024 * 1024
   let gpuItems: Array<Record<string, any>> = []
-  if (Array.isArray(raw.gpu_info))
+  if (Array.isArray(raw.gpu_info)) {
     gpuItems = raw.gpu_info
+  }
   else if (typeof raw.gpu_info === 'string' && raw.gpu_info.trim()) {
     try {
       const parsed = JSON.parse(raw.gpu_info)
@@ -315,7 +318,8 @@ function mapCfServer(raw: Record<string, any>): HubNode {
   const online = onlineValue === true || onlineValue === 1 || onlineValue === '1'
   const rawTimestamp = raw.last_updated ?? raw.timestamp
   const timestampValue = typeof rawTimestamp === 'string' && !Number.isFinite(Number(rawTimestamp))
-    ? Date.parse(rawTimestamp) : num(rawTimestamp)
+    ? Date.parse(rawTimestamp)
+    : num(rawTimestamp)
   const timestamp = Number.isFinite(timestampValue) ? timestampValue : 0
   const load = Array.isArray(raw.load_avg)
     ? raw.load_avg.map(Number).filter(Number.isFinite)
@@ -326,29 +330,60 @@ function mapCfServer(raw: Record<string, any>): HubNode {
     ? Number(match[1]) * ({ B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }[match[2].toUpperCase() as 'B' | 'KB' | 'MB' | 'GB' | 'TB'])
     : num(raw.traffic_limit)
   return {
-    id, name: text(raw.name) || id, country: text(raw.region), group: text(raw.server_group),
-    sort: num(raw.sort_order), public: !(raw.is_hidden === true || raw.is_hidden === 1 || raw.is_hidden === '1'),
-    online, last_seen: timestamp > 1e12 ? timestamp / 1000 : timestamp,
-    os: text(raw.os), kernel: text(raw.kernel_version), arch: text(raw.arch), cpu_name: text(raw.cpu_info), gpu_name: gpuName,
-    cpu_cores: num(raw.cpu_cores), mem_total: mib(raw.ram_total), swap_total: mib(raw.swap_total),
-    disk_total: mib(raw.disk_total), agent_version: text(raw.agent_version), price: num(raw.price),
-    currency: text(raw.currency), billing_cycle: text(raw.billing_cycle), expires_at: text(raw.expire_date) || null,
+    id,
+    name: text(raw.name) || id,
+    country: text(raw.region),
+    group: text(raw.server_group),
+    sort: num(raw.sort_order),
+    public: !(raw.is_hidden === true || raw.is_hidden === 1 || raw.is_hidden === '1'),
+    online,
+    last_seen: timestamp > 1e12 ? timestamp / 1000 : timestamp,
+    os: text(raw.os),
+    kernel: text(raw.kernel_version),
+    arch: text(raw.arch),
+    cpu_name: text(raw.cpu_info),
+    gpu_name: gpuName,
+    cpu_cores: num(raw.cpu_cores),
+    mem_total: mib(raw.ram_total),
+    swap_total: mib(raw.swap_total),
+    disk_total: mib(raw.disk_total),
+    agent_version: text(raw.agent_version),
+    price: num(raw.price),
+    currency: text(raw.currency),
+    billing_cycle: text(raw.billing_cycle),
+    expires_at: text(raw.expire_date) || null,
     // CFSM 使用逗号分隔标签；主题内部 tagHelper 使用分号分隔。
     tags: text(raw.tags).split(',').map(tag => tag.trim()).filter(Boolean).join(';'),
-    traffic_limit: trafficLimit, traffic_mode: text(raw.traffic_calc_type) || 'sum',
-    traffic_reset_day: num(raw.reset_day), total_rx: num(raw.net_rx), total_tx: num(raw.net_tx),
-    month_rx: num(raw.net_rx_monthly), month_tx: num(raw.net_tx_monthly),
+    traffic_limit: trafficLimit,
+    traffic_mode: text(raw.traffic_calc_type) || 'sum',
+    traffic_reset_day: num(raw.reset_day),
+    total_rx: num(raw.net_rx),
+    total_tx: num(raw.net_tx),
+    month_rx: num(raw.net_rx_monthly),
+    month_tx: num(raw.net_tx_monthly),
     // CFSM 的 ip_v4 / ip_v6 是可达性标记（'0'/'1'），不是 IP 地址；公共 API 不暴露真实公网 IP。
     // 不把标记 '1' 传给 GeoIP 查询或当作节点地址显示。
     ipv4: '',
     ipv6: '',
     metrics: {
-      cpu: raw.cpu == null ? Number.NaN : num(raw.cpu), load, gpu: gpuAverage, mem_total: mib(raw.ram_total), mem_used: mib(raw.ram_used),
-      swap_total: mib(raw.swap_total), swap_used: mib(raw.swap_used), disk_total: mib(raw.disk_total),
-      disk_used: mib(raw.disk_used), net_rx: num(raw.net_in_speed), net_tx: num(raw.net_out_speed),
-      tcp: num(raw.tcp_conn), udp: num(raw.udp_conn), procs: num(raw.processes),
-      total_rx: num(raw.net_rx), total_tx: num(raw.net_tx),
-      month_rx: num(raw.net_rx_monthly), month_tx: num(raw.net_tx_monthly),
+      cpu: raw.cpu == null ? Number.NaN : num(raw.cpu),
+      load,
+      gpu: gpuAverage,
+      mem_total: mib(raw.ram_total),
+      mem_used: mib(raw.ram_used),
+      swap_total: mib(raw.swap_total),
+      swap_used: mib(raw.swap_used),
+      disk_total: mib(raw.disk_total),
+      disk_used: mib(raw.disk_used),
+      net_rx: num(raw.net_in_speed),
+      net_tx: num(raw.net_out_speed),
+      tcp: num(raw.tcp_conn),
+      udp: num(raw.udp_conn),
+      procs: num(raw.processes),
+      total_rx: num(raw.net_rx),
+      total_tx: num(raw.net_tx),
+      month_rx: num(raw.net_rx_monthly),
+      month_tx: num(raw.net_tx_monthly),
     },
   }
 }
@@ -471,7 +506,7 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
       const parsed = typeof value === 'string' && !Number.isFinite(Number(value)) ? Date.parse(value) : num(value)
       return parsed > 1e12 ? parsed : parsed * 1000
     }
-    const historyRows = (Array.isArray(rows) ? rows : []).filter(row => {
+    const historyRows = (Array.isArray(rows) ? rows : []).filter((row) => {
       const ts = timestampMs(row)
       return Number.isFinite(ts) && ts >= cutoffMs
     })
@@ -481,11 +516,17 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
         const parsed = typeof value === 'string' && !Number.isFinite(Number(value)) ? Date.parse(value) : num(value)
         return parsed > 1e12 ? parsed / 1000 : parsed
       })(),
-      cpu: num(row.cpu), mem_used: num(row.ram_used) * 1024 * 1024, disk_used: num(row.disk_used) * 1024 * 1024,
-      net_rx: num(row.net_in_speed ?? row.net_rx), net_tx: num(row.net_out_speed ?? row.net_tx),
-      disk_read_bps: num(row.disk_read_bps), disk_write_bps: num(row.disk_write_bps),
-      disk_read_iops: num(row.disk_read_iops), disk_write_iops: num(row.disk_write_iops),
-      disk_await_ms: num(row.disk_await_ms), disk_util: num(row.disk_util),
+      cpu: num(row.cpu),
+      mem_used: num(row.ram_used) * 1024 * 1024,
+      disk_used: num(row.disk_used) * 1024 * 1024,
+      net_rx: num(row.net_in_speed ?? row.net_rx),
+      net_tx: num(row.net_out_speed ?? row.net_tx),
+      disk_read_bps: num(row.disk_read_bps),
+      disk_write_bps: num(row.disk_write_bps),
+      disk_read_iops: num(row.disk_read_iops),
+      disk_write_iops: num(row.disk_write_iops),
+      disk_await_ms: num(row.disk_await_ms),
+      disk_util: num(row.disk_util),
       gpu_info: row.gpu_info ?? null,
     })).filter(row => Number.isFinite(row.ts) && row.ts > 0)
     // CFSM 历史行也包含固定的运营商 / 自定义 Ping 字段；只转换真实存在的采样。
@@ -517,7 +558,8 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
         const rowPing: HubPingRow = { task_id: field.id, ts, latency }
         const rawLoss = row[field.loss]
         const parsedLoss = rawLoss === false || rawLoss === 'false' || rawLoss === undefined || rawLoss === null
-          ? Number.NaN : num(rawLoss)
+          ? Number.NaN
+          : num(rawLoss)
         // 与指标查询的规则一致：明确超时按 100%，有效 RTT 且无丢包样本按 0%。
         rowPing.loss = Number.isFinite(parsedLoss) ? parsedLoss : (latency === null ? 100 : 0)
         const values = lossSamples.get(field.id) ?? []
