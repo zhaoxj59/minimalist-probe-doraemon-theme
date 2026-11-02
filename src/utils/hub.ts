@@ -449,7 +449,7 @@ export async function fetchNodes(signal?: AbortSignal): Promise<HubSnapshot> {
   const realtimeUpdates = new Map<string, Record<string, any>>(
     latestReportUpdates
       .filter((item: Record<string, any>) => item && item.serverId != null)
-      .map((item: Record<string, any>) => [String(item.serverId), item]),
+      .map((item: Record<string, any>) => [String(item.serverId), item] as const),
   )
   const nodes: HubNode[] = (Array.isArray(data.servers) ? data.servers : []).map(
     raw => mapCfServer(raw, realtimeUpdates.get(String(raw.id))),
