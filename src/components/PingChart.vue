@@ -769,7 +769,14 @@ watch(() => props.uuid, () => {
   fetchRecords()
 })
 
+function onCfHistoryUpdated(event: Event) {
+  const detail = (event as CustomEvent<{ id?: string }>).detail
+  if (detail?.id === props.uuid && isCfServer(props.uuid))
+    void fetchRecords()
+}
+
 onMounted(() => {
+  window.addEventListener('cfsm:node-history-updated', onCfHistoryUpdated)
   syncTouchTooltipMode()
   coarsePointerMediaQuery = window.matchMedia('(pointer: coarse)')
   coarsePointerMediaQuery.addEventListener('change', syncTouchTooltipMode)
@@ -782,6 +789,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('cfsm:node-history-updated', onCfHistoryUpdated)
   coarsePointerMediaQuery?.removeEventListener('change', syncTouchTooltipMode)
 })
 </script>
