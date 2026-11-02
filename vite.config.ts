@@ -1,6 +1,6 @@
 import type { Plugin } from 'vite'
 import { execFileSync, execSync } from 'node:child_process'
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import process from 'node:process'
@@ -20,6 +20,26 @@ const THEME_SHORT_REGEX = /^[\w-]+$/
 const themeJsonPath = resolve(__dirname, 'theme.json')
 // 开发服务器把 /api 和 WebSocket 代理到这个 hub，不设时代理到本机 9911
 const hubTarget = process.env.MONITOR_HUB || 'http://127.0.0.1:9911'
+
+// CFSM 主题代理只转发 /assets/*；将 public 资源路径统一映射到该目录。
+const CFSM_THEME_ASSET_PATH_REGEX = /(['"])\/(images|data)\//g
+
+function cfsmThemeAssetPaths(): Plugin {
+  return {
+    name: 'cfsm-theme-asset-paths',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!/\.(?:vue|[cm]?[jt]sx?|css)$/.test(id))
+        return null
+
+      const transformed = code.replace(CFSM_THEME_ASSET_PATH_REGEX, '$1/assets/$2/')
+      return transformed === code ? null : { code: transformed, map: null }
+    },
+    transformIndexHtml(html) {
+      return html.replace(/(["'])\/images\//g, '$1/assets/images/')
+    },
+  }
+}
 
 function readThemeManifest(): ThemeManifest {
   if (!existsSync(themeJsonPath))
@@ -69,6 +89,16 @@ function monitorThemePackage(): Plugin {
         return
       }
 
+      // CFSM 从仓库子目录读取 dist/index.html，并且只代理 /assets/*。
+      // Vite 默认把 public/images、public/data 放在 dist 根目录，这里复制一份到 assets。
+      const assetDir = resolve(distDir, 'assets')
+      mkdirSync(assetDir, { recursive: true })
+      for (const directory of ['images', 'data']) {
+        const sourceDir = resolve(distDir, directory)
+        if (existsSync(sourceDir))
+          cpSync(sourceDir, resolve(assetDir, directory), { recursive: true, force: true })
+      }
+
       const stage = mkdtempSync(join(tmpdir(), 'monitor-theme-'))
       const entries = ['theme.json', 'dist']
       cpSync(themeJsonPath, join(stage, 'theme.json'))
@@ -94,6 +124,7 @@ export default defineConfig({
     __BUILD_GIT_HASH__: JSON.stringify(getCommitHash()),
   },
   plugins: [
+    cfsmThemeAssetPaths(),
     vue(),
     vueDevTools(),
     tailwindcss(),
