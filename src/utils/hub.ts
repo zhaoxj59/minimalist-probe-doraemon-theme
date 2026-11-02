@@ -272,7 +272,8 @@ function mapCfServer(raw: Record<string, any>): HubNode {
     return typeof n === 'number' && Number.isFinite(n) ? n : 0
   }
   const text = (v: unknown) => typeof v === 'string' ? v : ''
-  const online = raw.is_online === true || raw.is_online === 1 || raw.is_online === '1'
+  const onlineValue = raw.is_online ?? raw.online
+  const online = onlineValue === true || onlineValue === 1 || onlineValue === '1'
   const rawTimestamp = raw.last_updated ?? raw.timestamp
   const timestampValue = typeof rawTimestamp === 'string' && !Number.isFinite(Number(rawTimestamp))
     ? Date.parse(rawTimestamp) : num(rawTimestamp)
@@ -543,9 +544,14 @@ const CURRENCY_SYMBOL: Record<string, string> = {
 
 /** hub 的币种是三位 ISO 代码；主题按「符号 + 金额」显示，未收录的代码保留原样并加空格 */
 export function currencySymbol(code: string | undefined): string {
-  const cc = (code ?? '').trim().toUpperCase()
-  if (!cc)
+  const raw = (code ?? '').trim()
+  if (!raw)
     return '¥'
+  const cc = raw.toUpperCase()
+  // CF-Server-Monitor 的 currency 可能直接返回 ¥、$、HK$ 等符号，
+  // 也可能返回 CNY、USD 等 ISO 代码；符号应原样保留。
+  if (!/^[A-Z]{3}$/.test(cc))
+    return raw
   return CURRENCY_SYMBOL[cc] ?? `${cc} `
 }
 
