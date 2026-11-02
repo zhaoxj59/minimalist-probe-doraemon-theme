@@ -292,30 +292,50 @@ function gpuDetailsFromStatus(record: StatusRecord): RecordFormat['gpu_detailed'
 function cfHistoryToRecordFormat(rows: Awaited<ReturnType<typeof fetchNodeHistory>>['metrics']): RecordFormat[] {
   return rows.map((row) => {
     const time = new Date(row.ts * 1000).toISOString()
+    let gpuItems: Array<Record<string, any>> = []
+    if (Array.isArray(row.gpu_info)) {
+      gpuItems = row.gpu_info
+    }
+    else if (typeof row.gpu_info === 'string' && row.gpu_info.trim()) {
+      try {
+        const parsed = JSON.parse(row.gpu_info)
+        if (Array.isArray(parsed))
+          gpuItems = parsed
+      }
+      catch {
+        gpuItems = []
+      }
+    }
+    const gpuDetailed: NonNullable<RecordFormat['gpu_detailed']> = {}
+    gpuItems.forEach((item, index) => {
+      const rawIndex = Number(item.id ?? index)
+      const deviceIndex = Number.isInteger(rawIndex) && rawIndex >= 0 ? rawIndex : index
+      const memUsed = metricValue(item.mem_used)
+      const memTotal = metricValue(item.mem_total)
+      gpuDetailed[deviceIndex] = {
+        usage: metricValue(item.info),
+        memory: memUsed != null && memTotal != null && memTotal > 0 ? memUsed / memTotal * 100 : null,
+        temperature: null,
+        device_index: deviceIndex,
+        device_name: typeof item.name === 'string' ? item.name : 'GPU ' + (deviceIndex + 1),
+        mem_used: memUsed == null ? undefined : memUsed * 1024 * 1024,
+        mem_total: memTotal == null ? undefined : memTotal * 1024 * 1024,
+      }
+    })
+    const gpuUsages = Object.values(gpuDetailed).map(item => item.usage).filter((value): value is number => value != null && Number.isFinite(value))
+    const gpuAverage = gpuUsages.length ? gpuUsages.reduce((sum, value) => sum + value, 0) / gpuUsages.length : null
     return {
-      client: props.uuid,
-      time,
-      cpu: metricValue(row.cpu),
-      gpu: null,
-      gpu_usage: null,
-      gpu_memory: null,
-      ram: metricValue(row.mem_used),
-      ram_total: nodeInfo.value?.mem_total ?? null,
-      swap: null,
-      swap_total: nodeInfo.value?.swap_total ?? null,
-      load: null,
-      temp: null,
-      disk: metricValue(row.disk_used),
-      disk_total: nodeInfo.value?.disk_total ?? null,
-      net_in: metricValue(row.net_rx),
-      net_out: metricValue(row.net_tx),
-      net_total_up: null,
-      net_total_down: null,
-      traffic_up: null,
-      traffic_down: null,
-      process: null,
-      connections: null,
-      connections_udp: null,
+      client: props.uuid, time, cpu: metricValue(row.cpu), gpu: gpuAverage, gpu_usage: gpuAverage, gpu_memory: null,
+      gpu_detailed: Object.keys(gpuDetailed).length ? gpuDetailed : undefined,
+      ram: metricValue(row.mem_used), ram_total: nodeInfo.value?.mem_total ?? null,
+      swap: null, swap_total: nodeInfo.value?.swap_total ?? null, load: null, temp: null,
+      disk: metricValue(row.disk_used), disk_total: nodeInfo.value?.disk_total ?? null,
+      disk_read_bps: metricValue(row.disk_read_bps), disk_write_bps: metricValue(row.disk_write_bps),
+      disk_read_iops: metricValue(row.disk_read_iops), disk_write_iops: metricValue(row.disk_write_iops),
+      disk_await_ms: metricValue(row.disk_await_ms), disk_util: metricValue(row.disk_util),
+      net_in: metricValue(row.net_rx), net_out: metricValue(row.net_tx),
+      net_total_up: null, net_total_down: null, traffic_up: null, traffic_down: null,
+      process: null, connections: null, connections_udp: null,
     }
   }).sort((a, b) => dayjs(a.time).valueOf() - dayjs(b.time).valueOf())
 }
@@ -891,6 +911,11 @@ const trafficChartSeries = computed<MetricChartSeriesData[]>(() => [
   recordMetricSeries('累计上传', chartColors.quaternary, 'bytes', record => record.net_total_up),
   recordMetricSeries('周期下载', chartColors.tertiary, 'bytes', record => record.traffic_down, true),
   recordMetricSeries('周期上传', chartColors.secondary, 'bytes', record => record.traffic_up, true),
+].filter(seriesHasData))
+
+const diskIoChartSeries = computed<MetricChartSeriesData[]>(() => [
+  recordMetricSeries('磁盘读取', metricSeriesColors[0]!, 'bytesPerSecond', record => record.disk_read_bps),
+  recordMetricSeries('磁盘写入', metricSeriesColors[1]!, 'bytesPerSecond', record => record.disk_write_bps),
 ].filter(seriesHasData))
 
 const gpuMemoryChartSeries = computed<MetricChartSeriesData[]>(() => gpuDeviceEntries().flatMap((device, index) => {
@@ -1805,6 +1830,14 @@ onMounted(() => {
             <VChart :option="diskChartOption" autoresize />
           </div>
         </CardX>
+
+        <MetricSeriesChartCard
+          v-if="diskIoChartSeries.length"
+          title="磁盘 IO 读写速度"
+          icon="tabler:database"
+          tone="emerald"
+          :series="diskIoChartSeries"
+        />
 
         <!-- 网络卡片 -->
         <CardX v-if="isChartCardEnabled('network')" size="small" class="bg-background/50 border-none hover:bg-background transition-all rounded-md" :style="getChartCardStyle('network')">
