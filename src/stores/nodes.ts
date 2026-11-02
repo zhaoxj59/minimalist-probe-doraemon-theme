@@ -464,6 +464,19 @@ const useNodesStore = defineStore('nodes', () => {
   /**
    * 更新 WebSocket 连接状态
    */
+  function upsertSingleNode(client: Client, status?: NodeStatus): void {
+    const existing = nodeIndex.get(client.uuid)
+    if (existing) {
+      applyClient(existing, client)
+      if (status) applyStatus(existing, status)
+      return
+    }
+    const node = createNodeFromClient(client)
+    if (status) applyStatus(node, status)
+    addIndexedNode(node)
+    sortNodesByWeight()
+  }
+
   function updateWsState(state: WsConnectionState, attempts?: number): void {
     wsConnectionState.value = state
     if (attempts !== undefined) {
@@ -495,6 +508,7 @@ const useNodesStore = defineStore('nodes', () => {
     initNodes,
     updateNodeStatuses,
     updateNodeClients,
+    upsertSingleNode,
     sortNodesByWeight,
     updateWsState,
     clearNodes,
