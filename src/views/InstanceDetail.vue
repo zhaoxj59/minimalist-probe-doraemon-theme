@@ -19,10 +19,9 @@ import { formatCityNameZh } from '@/utils/cityNameHelper'
 import { getCpuBenchmarkRating, getPassMarkCpuLookupUrl } from '@/utils/cpuBenchmark'
 import * as financeHelper from '@/utils/financeHelper'
 import { formatBytesPerSecondWithConfig, formatBytesWithConfig, formatUptimeWithFormat } from '@/utils/helper'
-import { fetchNodeDetail, getFrontendWsTimeoutMinutes, isCfServer, openNodeLiveSocket } from '@/utils/hub'
+import { fetchNodeDetail, getFrontendWsTimeoutMinutes, isCfServer, openNodeLiveSocket, snapshotToMaps } from '@/utils/hub'
 import { getOSImage, getOSName } from '@/utils/osImageHelper'
 import { getRegionCode, getRegionDisplayName } from '@/utils/regionHelper'
-import { snapshotToMaps } from '@/utils/rpc'
 
 import { formatPrice, formatPriceWithCycle, getExpireStatus, getExpireText, isFreePrice, parseTags } from '@/utils/tagHelper'
 
