@@ -15,7 +15,7 @@ import { LOAD_RECORD_MAX_COUNT } from '@/constants/load'
 import { loadNodeLoadRecords } from '@/services/history.service'
 import { useAppStore } from '@/stores/app'
 import { useNodesStore } from '@/stores/nodes'
-import { fetchNodeDetail, getFrontendWsTimeoutMinutes, openNodeLiveSocket } from '@/utils/hub'
+import { fetchNodeDetail, getFrontendWsTimeoutMinutes, isCfServer, openNodeLiveSocket } from '@/utils/hub'
 import { snapshotToMaps } from '@/utils/rpc'
 import { formatCityNameZh } from '@/utils/cityNameHelper'
 import { getCpuBenchmarkRating, getPassMarkCpuLookupUrl } from '@/utils/cpuBenchmark'
@@ -73,6 +73,11 @@ async function fetchTrafficPeak(uuid: string): Promise<void> {
   const seq = ++trafficPeakSeq
   peakNetOut.value = 0
   peakNetIn.value = 0
+
+  // CFSM 公共历史接口目前没有承诺提供网络速率历史字段；
+  // 不调用旧探针历史服务，也不把累计流量误当成瞬时速率。
+  if (isCfServer(uuid))
+    return
 
   const records = await loadTrafficPeakRecords(uuid)
   if (seq !== trafficPeakSeq || data.value?.uuid !== uuid)
