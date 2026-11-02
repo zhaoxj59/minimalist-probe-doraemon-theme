@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { PING_RECORD_MAX_COUNT } from '@/constants/load'
 import { loadPingRecordsWithTasks } from '@/services/history.service'
 import { loadPingMetricStats, loadPublicPingTasks, queryMetrics } from '@/services/metrics.service'
+import { fetchNodeHistory, isCfServer, rememberProbes } from '@/utils/hub'
 import { useAppStore } from '@/stores/app'
 import { ACCESSIBLE_LINE_TYPES, getChartSeriesPalette } from '@/utils/chartPalette'
 import { isPingMetric, normalizeMetricSeriesList, orderPingTasksByBackend, PING_LATENCY_METRIC, pingTaskId, pingTaskName } from '@/utils/metricSeries'
@@ -346,6 +347,41 @@ async function fetchRecords() {
   error.value = null
 
   try {
+    // CFSM 详情只使用 /api/servers 附带的真实 Ping 采样窗口。
+    // /api/history/all 是性能历史接口，不包含 Ping 历史，不能拿它拼造曲线。
+    if (isCfServer(requestedUuid)) {
+      const history = await fetchNodeHistory(requestedUuid, { hours: selectedHours.value, series: 'ping' })
+      if (sequence !== fetchRecordsSequence || requestedUuid !== props.uuid)
+        return
+      rememberProbes(history)
+      const records: PingRecord[] = history.ping.map(row => ({
+        client: requestedUuid,
+        task_id: row.task_id,
+        time: new Date(row.ts * 1000).toISOString(),
+        value: row.latency == null ? -1 : row.latency,
+      })).sort((a, b) => dayjs(a.time).valueOf() - dayjs(b.time).valueOf())
+      const probeIds = [...new Set(history.ping.map(row => row.task_id))]
+      const nextTasks: PingTaskInfo[] = probeIds.map((id) => {
+        const samples = history.ping.filter(row => row.task_id === id && row.latency != null).map(row => row.latency as number)
+        const name = history.probes[String(id)] || `监控 ${id}`
+        const loss = history.loss[String(id)] ?? 0
+        return {
+          id, name, interval: 0, loss,
+          min: samples.length ? Math.min(...samples) : undefined,
+          max: samples.length ? Math.max(...samples) : undefined,
+          avg: samples.length ? samples.reduce((sum, value) => sum + value, 0) / samples.length : undefined,
+          latest: samples.at(-1), total: history.ping.filter(row => row.task_id === id).length,
+          valid: samples.length, type: 'ping',
+        }
+      })
+      remoteData.value = records
+      tasks.value = nextTasks
+      selectedTaskIds.value = nextTasks.map(task => task.id)
+      error.value = null
+      legacyCustomRangeFallback.value = false
+      return
+    }
+
     const metricPayload = await loadMetricPingPayload(requestedUuid).catch(() => null)
     if (sequence !== fetchRecordsSequence || requestedUuid !== props.uuid)
       return
