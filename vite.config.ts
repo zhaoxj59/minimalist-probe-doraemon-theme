@@ -16,27 +16,29 @@ interface ThemeManifest {
   version?: unknown
 }
 
-const THEME_SHORT_REGEX = /^[\w-]+$/
+const THEME_SHORT_REGEX = /^[\\w-]+$/
+const SOURCE_FILE_EXTENSION_REGEX = /\\.(?:vue|[cm]?[jt]sx?|css)$/
+const HTML_IMAGE_PATH_REGEX = /(["'])\\/images\\//g
 const themeJsonPath = resolve(__dirname, 'theme.json')
 // 开发服务器把 /api 和 WebSocket 代理到这个 hub，不设时代理到本机 9911
 const hubTarget = process.env.MONITOR_HUB || 'http://127.0.0.1:9911'
 
 // CFSM 主题代理只转发 /assets/*；将 public 资源路径统一映射到该目录。
-const CFSM_THEME_ASSET_PATH_REGEX = /(['"])\/(images|data)\//g
+const CFSM_THEME_ASSET_PATH_REGEX = /(['"])\\/(images|data)\\//g
 
 function cfsmThemeAssetPaths(): Plugin {
   return {
     name: 'cfsm-theme-asset-paths',
     enforce: 'pre',
     transform(code, id) {
-      if (!/\.(?:vue|[cm]?[jt]sx?|css)$/.test(id))
+      if (!SOURCE_FILE_EXTENSION_REGEX.test(id))
         return null
 
       const transformed = code.replace(CFSM_THEME_ASSET_PATH_REGEX, '$1/assets/$2/')
       return transformed === code ? null : { code: transformed, map: null }
     },
     transformIndexHtml(html) {
-      return html.replace(/(["'])\/images\//g, '$1/assets/images/')
+      return html.replace(HTML_IMAGE_PATH_REGEX, '$1/assets/images/')
     },
   }
 }
