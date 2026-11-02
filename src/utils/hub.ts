@@ -102,6 +102,13 @@ export interface HubMetricRow {
   net_tx: number
   net_rx_max?: number
   net_tx_max?: number
+  disk_read_bps?: number
+  disk_write_bps?: number
+  disk_read_iops?: number
+  disk_write_iops?: number
+  disk_await_ms?: number
+  disk_util?: number
+  gpu_info?: string | Array<Record<string, any>> | null
 }
 
 export interface HubPingRow {
@@ -481,6 +488,10 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
       })(),
       cpu: num(row.cpu), mem_used: num(row.ram_used), disk_used: num(row.disk_used),
       net_rx: num(row.net_in_speed ?? row.net_rx), net_tx: num(row.net_out_speed ?? row.net_tx),
+      disk_read_bps: num(row.disk_read_bps), disk_write_bps: num(row.disk_write_bps),
+      disk_read_iops: num(row.disk_read_iops), disk_write_iops: num(row.disk_write_iops),
+      disk_await_ms: num(row.disk_await_ms), disk_util: num(row.disk_util),
+      gpu_info: row.gpu_info ?? null,
     })).filter(row => Number.isFinite(row.ts) && row.ts > 0)
     // CFSM 的此接口提供性能历史；没有提供历史探测曲线时不伪造 ping 数据。
     return { metrics, ping: [], probes: {}, loss: {} } satisfies HubHistory
