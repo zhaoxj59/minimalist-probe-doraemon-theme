@@ -717,6 +717,13 @@ async function fetchHistoryData() {
     return
 
   if (isCfServer(props.uuid)) {
+    if (isCustomRange.value) {
+      metricData.value = null
+      remoteData.value = []
+      rawMetricSeries.value = []
+      error.value = 'CFSM 历史接口暂不支持自定义起止时间，请选择预设时间范围'
+      return
+    }
     const requestedUuid = props.uuid
     const hours = effectiveHistoryHours.value
     loading.value = true
