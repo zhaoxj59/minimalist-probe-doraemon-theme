@@ -481,9 +481,9 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   })
 }
 
-/** 匿名访客最多查询 7 天，登录后 90 天；超出时 hub 会静默收窄 */
+/** CFSM 历史 API：匿名访问最多 24 小时；已验证管理员可查询至 168 小时（7 天）。 */
 export const PUBLIC_HISTORY_HOURS = 24
-export const ADMIN_HISTORY_HOURS = 24
+export const ADMIN_HISTORY_HOURS = 168
 
 export interface HistoryQuery {
   hours: number
@@ -496,8 +496,8 @@ const HISTORY_CACHE_MS = 15_000
 
 export function fetchNodeHistory(id: string | number, query: HistoryQuery, signal?: AbortSignal): Promise<HubHistory> {
   // CFSM 仅接受固定 hours 档位；请求较大档位后，再按调用方要求的窗口在本地裁剪。
-  const requestedHours = Math.min(24, Math.max(1, Number.isFinite(query.hours) ? query.hours : 1))
-  const apiHours = [1, 6, 12, 24].find(value => value >= requestedHours) ?? 24
+  const requestedHours = Math.min(168, Math.max(1, Number.isFinite(query.hours) ? query.hours : 1))
+  const apiHours = [1, 6, 12, 24, 48, 96, 168].find(value => value >= requestedHours) ?? 168
   const url = `/api/history/all?id=${encodeURIComponent(String(id))}&hours=${apiHours}`
   const cacheKey = `${url}|window=${requestedHours}`
   const cached = historyCache.get(cacheKey)
