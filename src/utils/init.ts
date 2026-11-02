@@ -141,8 +141,7 @@ class InitManager {
 
     this.nodesStore.updateWsState('connecting', this.nodesStore.wsReconnectAttempts)
     let opened = false
-    let socket: WebSocket
-    socket = openLiveSocket({
+    const socket = openLiveSocket({
       onOpen: () => {
         if (this.socket !== socket || this.destroyed || document.hidden)
           return
@@ -181,6 +180,7 @@ class InitManager {
           return
         if (event.reason === 'cfsm-timeout') {
           this.nodesStore.updateWsState('disconnected')
+          // eslint-disable-next-line no-alert -- Ask before reconnecting after the configured live-session timeout.
           const continueConnecting = window.confirm('实时连接已达到站点设定的时长。是否继续保持实时连接？')
           if (continueConnecting && !this.destroyed && !document.hidden)
             this.connectWebSocket()
