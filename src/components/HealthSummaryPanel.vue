@@ -11,8 +11,8 @@ import { LOAD_RECORD_MAX_COUNT, PING_RECORD_MAX_COUNT } from '@/constants/load'
 import { loadLoadRecords, loadPingRecords } from '@/services/history.service'
 import { analyzeDiskPrediction } from '@/services/prediction.service'
 import { useAppStore } from '@/stores/app'
-import { isCfServer } from '@/utils/hub'
 import { formatBytesPerSecondWithConfig, formatBytesWithConfig } from '@/utils/helper'
+import { isCfServer } from '@/utils/hub'
 import { getTrafficUsed, getTrafficUsedPercentage, hasTrafficLimit } from '@/utils/nodeMetricsHelper'
 
 interface HealthRangeOption {
