@@ -35,6 +35,7 @@ class InitManager {
       return
 
     document.addEventListener('visibilitychange', this.handleVisibilityChange)
+    window.addEventListener('hashchange', this.handleRouteChange)
 
     try {
       await this.runStartupRequests()
@@ -254,6 +255,31 @@ class InitManager {
     }
   }
 
+  private handleRouteChange = (): void => {
+    if (this.destroyed || !this.isInitialized)
+      return
+    if (this.isDetailRoute()) {
+      if (this.pollTimer) {
+        clearTimeout(this.pollTimer)
+        this.pollTimer = null
+      }
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer)
+        this.reconnectTimer = null
+      }
+      if (this.wsTimeoutTimer) {
+        clearTimeout(this.wsTimeoutTimer)
+        this.wsTimeoutTimer = null
+      }
+      const previousSocket = this.socket
+      this.socket = null
+      previousSocket?.close()
+      this.nodesStore.updateWsState('disconnected')
+      return
+    }
+    this.startRealtime()
+  }
+
   private handleVisibilityChange = (): void => {
     if (document.hidden) {
       if (this.pollTimer) {
@@ -292,6 +318,7 @@ class InitManager {
   destroy(): void {
     this.destroyed = true
     document.removeEventListener('visibilitychange', this.handleVisibilityChange)
+    window.removeEventListener('hashchange', this.handleRouteChange)
     if (this.pollTimer) {
       clearTimeout(this.pollTimer)
       this.pollTimer = null
