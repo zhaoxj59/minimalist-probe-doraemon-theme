@@ -2,8 +2,7 @@
  * 极简探针 hub 数据层
  *
  * 主题只使用 hub 公开的五个读取接口：
- *   GET /api/me、GET /api/nodes、GET /api/nodes/{id}/metrics、GET /api/ws、
- *   GET /api/themes/{short}/config
+ *   CF-Server-Monitor: GET /api/config、GET /api/servers、GET /api/history/all、GET /api/ws
  * 这里把 hub 的节点快照转换成主题组件原本使用的 Client / NodeStatus 结构，
  * 其余界面代码因此不需要感知数据来自哪一种后端。
  *
@@ -298,8 +297,8 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /** 匿名访客最多查询 7 天，登录后 90 天；超出时 hub 会静默收窄 */
-export const PUBLIC_HISTORY_HOURS = 168
-export const ADMIN_HISTORY_HOURS = 2160
+export const PUBLIC_HISTORY_HOURS = 24
+export const ADMIN_HISTORY_HOURS = 24
 
 export interface HistoryQuery {
   hours: number
