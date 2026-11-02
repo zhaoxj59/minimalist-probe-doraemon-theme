@@ -7,16 +7,16 @@ permissions:
   contents: write
 
 concurrency:
-  group: publish-cfsm-theme-${{ github.ref }}
+  group: publish-cfsm-theme
   cancel-in-progress: false
 
 jobs:
-  publish-theme-files:
+  publish-theme:
     if: github.ref == 'refs/heads/cfsm-port'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - name: Checkout cfsm-port
+      - name: Checkout theme source
         uses: actions/checkout@v6
         with:
           ref: cfsm-port
@@ -33,20 +33,31 @@ jobs:
       - name: Build CFSM theme
         run: bun run build
 
-      - name: Verify generated theme package
+      - name: Verify build output
         run: |
-          test -s theme.tar.gz
           test -s dist/index.html
-          tar -tzf theme.tar.gz
+          test -d dist/assets
+          test -n "$(find dist/assets -type f -print -quit)"
+          test -s theme.tar.gz
+          tar -tzf theme.tar.gz >/dev/null
 
-      - name: Publish dist directory and theme package to cfsm-port
+      - name: Prepare deploy branch
+        shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f dist theme.tar.gz
-          if git diff --cached --quiet; then
-            echo "No generated theme changes to commit."
-          else
-            git commit -m "Publish CFSM theme build"
-            git push origin HEAD:cfsm-port
-          fi
+          output_dir="$RUNNER_TEMP/cfsm-theme-output"
+          mkdir -p "$output_dir"
+          cp -a dist/. "$output_dir/"
+          test -s "$output_dir/index.html"
+          test -d "$output_dir/assets"
+
+          git checkout --orphan cfsm-deploy
+          git clean -fdx
+          cp -a "$output_dir/." .
+          test -s index.html
+          test -d assets
+          git add -A
+          git commit -m "Publish CFSM Doraemon theme"
+          git push --force origin HEAD:cfsm-deploy
