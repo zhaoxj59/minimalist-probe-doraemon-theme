@@ -263,52 +263,70 @@ function buildCurrentPingHistory(raw: Record<string, any>, sysConfig: Record<str
   return { metrics: [], ping: ping.sort((a, b) => a.ts - b.ts), probes, loss }
 }
 
+
+/** 将 CFSM 单台服务器响应转换为主题内部节点结构。 */
+function mapCfServer(raw: Record<string, any>): HubNode {
+  const id = String(raw.id)
+  const num = (v: unknown) => {
+    const n = typeof v === 'string' ? Number(v) : v
+    return typeof n === 'number' && Number.isFinite(n) ? n : 0
+  }
+  const text = (v: unknown) => typeof v === 'string' ? v : ''
+  const online = raw.is_online === true || raw.is_online === 1 || raw.is_online === '1'
+  const rawTimestamp = raw.last_updated ?? raw.timestamp
+  const timestampValue = typeof rawTimestamp === 'string' && !Number.isFinite(Number(rawTimestamp))
+    ? Date.parse(rawTimestamp) : num(rawTimestamp)
+  const timestamp = Number.isFinite(timestampValue) ? timestampValue : 0
+  const load = Array.isArray(raw.load_avg)
+    ? raw.load_avg.map(Number).filter(Number.isFinite)
+    : typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(/[ ,]+/).map(Number).filter(Number.isFinite) : []
+  const trafficText = text(raw.traffic_limit)
+  const match = trafficText.match(/^([\\d.]+)\\s*(B|KB|MB|GB|TB)$/i)
+  const trafficLimit = match
+    ? Number(match[1]) * ({ B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }[match[2].toUpperCase() as 'B' | 'KB' | 'MB' | 'GB' | 'TB'])
+    : num(raw.traffic_limit)
+  return {
+    id, name: text(raw.name) || id, country: text(raw.region), group: text(raw.server_group),
+    sort: num(raw.sort_order), public: !(raw.is_hidden === true || raw.is_hidden === 1 || raw.is_hidden === '1'),
+    online, last_seen: timestamp > 1e12 ? timestamp / 1000 : timestamp,
+    os: text(raw.os), kernel: text(raw.kernel_version), arch: text(raw.arch), cpu_name: text(raw.cpu_info),
+    cpu_cores: num(raw.cpu_cores), mem_total: num(raw.ram_total), swap_total: num(raw.swap_total),
+    disk_total: num(raw.disk_total), agent_version: text(raw.agent_version), price: num(raw.price),
+    currency: text(raw.currency), billing_cycle: text(raw.billing_cycle), expires_at: text(raw.expire_date) || null,
+    traffic_limit: trafficLimit, traffic_mode: text(raw.traffic_calc_type) || 'sum',
+    traffic_reset_day: num(raw.reset_day), total_rx: num(raw.net_rx), total_tx: num(raw.net_tx),
+    month_rx: num(raw.net_rx_monthly), month_tx: num(raw.net_tx_monthly),
+    ipv4: text(raw.ip_v4) && text(raw.ip_v4) !== '0' ? text(raw.ip_v4) : '',
+    ipv6: text(raw.ip_v6) && text(raw.ip_v6) !== '0' ? text(raw.ip_v6) : '',
+    metrics: {
+      cpu: raw.cpu == null ? Number.NaN : num(raw.cpu), load, mem_total: num(raw.ram_total), mem_used: num(raw.ram_used),
+      swap_total: num(raw.swap_total), swap_used: num(raw.swap_used), disk_total: num(raw.disk_total),
+      disk_used: num(raw.disk_used), net_rx: num(raw.net_in_speed), net_tx: num(raw.net_out_speed),
+      tcp: num(raw.tcp_conn), udp: num(raw.udp_conn), procs: num(raw.processes),
+      total_rx: num(raw.net_rx), total_tx: num(raw.net_tx),
+      month_rx: num(raw.net_rx_monthly), month_tx: num(raw.net_tx_monthly),
+    },
+  }
+}
+
+/** 详情页按需读取单台节点，不把单节点响应当作全量列表。 */
+export async function fetchNodeDetail(id: string | number, signal?: AbortSignal): Promise<HubSnapshot> {
+  const response = await getJson<Record<string, any>>(`/api/server?id=${encodeURIComponent(String(id))}`, signal)
+  const raw = response.server && typeof response.server === 'object' ? response.server : response
+  if (!raw || (typeof raw.id !== 'string' && typeof raw.id !== 'number'))
+    throw new HubError(502, 'Invalid server detail response')
+  const sysConfig = response.sysConfig && typeof response.sysConfig === 'object' ? response.sysConfig : {}
+  const node = mapCfServer(raw)
+  const history = buildCurrentPingHistory(raw, sysConfig)
+  cfPingHistory.set(String(node.id), history)
+  rememberProbes(history)
+  return { nodes: [node] }
+}
+
 export async function fetchNodes(signal?: AbortSignal): Promise<HubSnapshot> {
   const data = await getJson<{ servers?: Array<Record<string, any>>, sysConfig?: Record<string, any> }>('/api/servers', signal)
   const sysConfig = data.sysConfig && typeof data.sysConfig === 'object' ? data.sysConfig : {}
-  const nodes: HubNode[] = (Array.isArray(data.servers) ? data.servers : []).map((raw) => {
-    const id = String(raw.id)
-    const num = (v: unknown) => {
-      const n = typeof v === 'string' ? Number(v) : v
-      return typeof n === 'number' && Number.isFinite(n) ? n : 0
-    }
-    const text = (v: unknown) => typeof v === 'string' ? v : ''
-    const online = raw.is_online === true || raw.is_online === 1 || raw.is_online === '1'
-    const rawTimestamp = raw.last_updated ?? raw.timestamp
-    const timestampValue = typeof rawTimestamp === 'string' && !Number.isFinite(Number(rawTimestamp))
-      ? Date.parse(rawTimestamp) : num(rawTimestamp)
-    const timestamp = Number.isFinite(timestampValue) ? timestampValue : 0
-    const load = Array.isArray(raw.load_avg)
-      ? raw.load_avg.map(Number).filter(Number.isFinite)
-      : typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(/[ ,]+/).map(Number).filter(Number.isFinite) : []
-    const trafficText = text(raw.traffic_limit)
-    const match = trafficText.match(/^([\d.]+)\s*(B|KB|MB|GB|TB)$/i)
-    const trafficLimit = match
-      ? Number(match[1]) * ({ B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }[match[2].toUpperCase() as 'B' | 'KB' | 'MB' | 'GB' | 'TB'])
-      : num(raw.traffic_limit)
-    return {
-      id, name: text(raw.name) || id, country: text(raw.region), group: text(raw.server_group),
-      sort: num(raw.sort_order), public: !(raw.is_hidden === true || raw.is_hidden === 1 || raw.is_hidden === '1'),
-      online, last_seen: timestamp > 1e12 ? timestamp / 1000 : timestamp,
-      os: text(raw.os), kernel: text(raw.kernel_version), arch: text(raw.arch), cpu_name: text(raw.cpu_info),
-      cpu_cores: num(raw.cpu_cores), mem_total: num(raw.ram_total), swap_total: num(raw.swap_total),
-      disk_total: num(raw.disk_total), agent_version: text(raw.agent_version), price: num(raw.price),
-      currency: text(raw.currency), billing_cycle: text(raw.billing_cycle), expires_at: text(raw.expire_date) || null,
-      traffic_limit: trafficLimit, traffic_mode: text(raw.traffic_calc_type) || 'sum',
-      traffic_reset_day: num(raw.reset_day), total_rx: num(raw.net_rx), total_tx: num(raw.net_tx),
-      month_rx: num(raw.net_rx_monthly), month_tx: num(raw.net_tx_monthly),
-      ipv4: text(raw.ip_v4) && text(raw.ip_v4) !== '0' ? text(raw.ip_v4) : '',
-      ipv6: text(raw.ip_v6) && text(raw.ip_v6) !== '0' ? text(raw.ip_v6) : '',
-      metrics: {
-        cpu: raw.cpu == null ? Number.NaN : num(raw.cpu), load, mem_total: num(raw.ram_total), mem_used: num(raw.ram_used),
-        swap_total: num(raw.swap_total), swap_used: num(raw.swap_used), disk_total: num(raw.disk_total),
-        disk_used: num(raw.disk_used), net_rx: num(raw.net_in_speed), net_tx: num(raw.net_out_speed),
-        tcp: num(raw.tcp_conn), udp: num(raw.udp_conn), procs: num(raw.processes),
-        total_rx: num(raw.net_rx), total_tx: num(raw.net_tx),
-        month_rx: num(raw.net_rx_monthly), month_tx: num(raw.net_tx_monthly),
-      },
-    }
-  })
+  const nodes: HubNode[] = (Array.isArray(data.servers) ? data.servers : []).map(mapCfServer)
   cfServerIds = nodes.map(node => String(node.id))
   cfPingHistory.clear()
   for (const raw of Array.isArray(data.servers) ? data.servers : []) {
