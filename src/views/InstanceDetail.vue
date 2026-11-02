@@ -21,8 +21,8 @@ import * as financeHelper from '@/utils/financeHelper'
 import { formatBytesPerSecondWithConfig, formatBytesWithConfig, formatUptimeWithFormat } from '@/utils/helper'
 import { fetchNodeDetail, getFrontendWsTimeoutMinutes, isCfServer, openNodeLiveSocket } from '@/utils/hub'
 import { getOSImage, getOSName } from '@/utils/osImageHelper'
-import { snapshotToMaps } from '@/utils/rpc'
 import { getRegionCode, getRegionDisplayName } from '@/utils/regionHelper'
+import { snapshotToMaps } from '@/utils/rpc'
 
 import { formatPrice, formatPriceWithCycle, getExpireStatus, getExpireText, isFreePrice, parseTags } from '@/utils/tagHelper'
 
