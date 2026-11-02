@@ -337,12 +337,15 @@ function mapCfServer(raw: Record<string, any>): HubNode {
     : num(rawLastUpdated)
   const lastUpdated = Number.isFinite(lastUpdatedValue) ? lastUpdatedValue : 0
 
-  // 部分 CFSM 版本的 servers[] 未附带 is_online；此时按最近 5 分钟上报时间兜底。
+  // CFSM 的全局在线统计以最新指标上报时间为准；部分响应中的 is_online 可能是旧值。
+  // 只要存在 last_updated，就优先按最近 5 分钟是否有上报判断，避免旧的 false 覆盖新上报。
   const onlineValue = raw.is_online ?? raw.online
   const hasExplicitOnline = onlineValue !== undefined && onlineValue !== null
-  const online = hasExplicitOnline
-    ? onlineValue === true || onlineValue === 1 || onlineValue === '1'
-    : lastUpdated > 0 && Date.now() - (lastUpdated > 1e12 ? lastUpdated : lastUpdated * 1000) < 300000
+  const hasLastUpdated = lastUpdated > 0
+  const lastUpdatedMs = lastUpdated > 1e12 ? lastUpdated : lastUpdated * 1000
+  const online = hasLastUpdated
+    ? Date.now() - lastUpdatedMs < 300000
+    : hasExplicitOnline && (onlineValue === true || onlineValue === 1 || onlineValue === '1')
   const load = Array.isArray(raw.load_avg)
     ? raw.load_avg.map(Number).filter(Number.isFinite)
     : typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(LOAD_AVG_SPLIT_REGEX).map(Number).filter(Number.isFinite) : []
