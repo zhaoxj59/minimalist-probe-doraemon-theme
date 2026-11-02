@@ -16,6 +16,13 @@ import manifest from '../../theme.json'
 // 提前声明供节点字段转换使用的正则，避免使用位置早于定义。
 const LOAD_AVG_SPLIT_REGEX = /[ ,]+/
 const TRAFFIC_LIMIT_REGEX = /^([\d.]+)\s*(B|KB|MB|GB|TB)$/i
+const TRAFFIC_UNIT_MULTIPLIERS: Record<'B' | 'KB' | 'MB' | 'GB' | 'TB', number> = {
+  B: 1,
+  KB: 1024,
+  MB: 1024 ** 2,
+  GB: 1024 ** 3,
+  TB: 1024 ** 4,
+}
 
 // ==================== hub 响应类型 ====================
 
@@ -232,8 +239,11 @@ function buildCurrentPingHistory(raw: Record<string, any>, sysConfig: Record<str
         if (value !== null && !(typeof value === 'number' && Number.isFinite(value)))
           continue
         const nameField = CF_PROBE_FIELDS[probe.id - 1]
-        const name = typeof sysConfig[nameField.config] === 'string' && sysConfig[nameField.config].trim()
-          ? sysConfig[nameField.config].trim()
+        if (!nameField)
+          continue
+        const configuredName = sysConfig[nameField.config]
+        const name = typeof configuredName === 'string' && configuredName.trim()
+          ? configuredName.trim()
           : nameField.fallback
         probes[String(probe.id)] = name
         const lossValue = lossPoint?.[probe.key]
@@ -326,8 +336,9 @@ function mapCfServer(raw: Record<string, any>): HubNode {
     : typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(LOAD_AVG_SPLIT_REGEX).map(Number).filter(Number.isFinite) : []
   const trafficText = text(raw.traffic_limit)
   const match = trafficText.match(TRAFFIC_LIMIT_REGEX)
-  const trafficLimit = match
-    ? Number(match[1]) * ({ B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }[match[2].toUpperCase() as 'B' | 'KB' | 'MB' | 'GB' | 'TB'])
+  const trafficUnit = match?.[2]?.toUpperCase() as keyof typeof TRAFFIC_UNIT_MULTIPLIERS | undefined
+  const trafficLimit = match && trafficUnit
+    ? Number(match[1]) * TRAFFIC_UNIT_MULTIPLIERS[trafficUnit]
     : num(raw.traffic_limit)
   return {
     id,
