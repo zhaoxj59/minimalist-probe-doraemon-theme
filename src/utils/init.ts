@@ -131,8 +131,11 @@ class InitManager {
 
     this.nodesStore.updateWsState('connecting', this.nodesStore.wsReconnectAttempts)
     let opened = false
-    this.socket = openLiveSocket({
+    let socket: WebSocket
+    socket = openLiveSocket({
       onOpen: () => {
+        if (this.socket !== socket || this.destroyed || document.hidden)
+          return
         opened = true
         this.nodesStore.updateWsState('connected', 0)
         this.appStore.connectionError = false
@@ -149,11 +152,16 @@ class InitManager {
         }
       },
       onSnapshot: (snapshot) => {
+        if (this.socket !== socket || this.destroyed || document.hidden)
+          return
         this.applySnapshot(snapshot)
         this.failureCount = 0
         this.appStore.connectionError = false
       },
       onClose: (event) => {
+        // 只允许当前连接的 close 事件改变状态；忽略切后台后迟到的旧连接回调。
+        if (this.socket !== socket)
+          return
         this.socket = null
         if (this.wsTimeoutTimer) {
           clearTimeout(this.wsTimeoutTimer)
@@ -174,6 +182,7 @@ class InitManager {
         this.scheduleReconnect(opened)
       },
     })
+    this.socket = socket
   }
 
   private scheduleReconnect(wasOpen: boolean): void {
@@ -250,8 +259,9 @@ class InitManager {
         clearTimeout(this.wsTimeoutTimer)
         this.wsTimeoutTimer = null
       }
-      this.socket?.close()
+      const previousSocket = this.socket
       this.socket = null
+      previousSocket?.close()
       this.nodesStore.updateWsState('disconnected')
       return
     }
