@@ -1,6 +1,6 @@
 /**
  * 应用初始化模块
- * 负责启动时的并行请求，以及之后的实时数据：HTTP 轮询 /api/nodes 或订阅 /api/ws。
+ * 负责启动时读取 CF-Server-Monitor 配置与服务器列表，并通过 HTTP 轮询或 WebSocket 接收更新。
  */
 
 import type { HubSnapshot } from '@/utils/hub'
