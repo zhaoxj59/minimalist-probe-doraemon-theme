@@ -74,10 +74,10 @@ const compareMetrics = computed<CompareMetric[]>(() => {
     {
       key: 'trafficQuota',
       label: '流量配额',
-      value: node => hasTrafficLimit(node) ? `${formatBytes(getTrafficUsed(node))} / ${formatBytes(node.traffic_limit)}` : '无限',
-      percentage: node => hasTrafficLimit(node) ? getTrafficUsedPercentage(node) : null,
+      value: node => !hasMetrics(node) ? '-' : hasTrafficLimit(node) ? `${formatBytes(getTrafficUsed(node))} / ${formatBytes(node.traffic_limit)}` : '无限',
+      percentage: node => hasMetrics(node) && hasTrafficLimit(node) ? getTrafficUsedPercentage(node) : null,
     },
-    { key: 'uptime', label: '连续工作时长', value: node => formatUptimeWithFormat(node.uptime || 0, 'day') },
+    { key: 'uptime', label: '连续工作时长', value: node => hasMetrics(node) ? formatUptimeWithFormat(node.uptime || 0, 'day') : '-' },
   ]
 
   if (appStore.privateFeaturesAllowed || !appStore.hidePriceWhenLoggedOut) {
