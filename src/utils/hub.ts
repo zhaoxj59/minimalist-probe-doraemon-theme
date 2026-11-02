@@ -166,7 +166,7 @@ export async function fetchNodes(signal?: AbortSignal): Promise<HubSnapshot> {
     }
     const text = (v: unknown) => typeof v === 'string' ? v : ''
     const online = raw.is_online === true || raw.is_online === 1 || raw.is_online === '1'
-    const timestamp = num(raw.last_updated) || num(raw.timestamp) || Date.now()
+    const timestamp = num(raw.last_updated) || num(raw.timestamp)
     const load = typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(/[ ,]+/).map(Number).filter(Number.isFinite) : []
     const trafficText = text(raw.traffic_limit)
     const match = trafficText.match(/^([\d.]+)\s*(B|KB|MB|GB|TB)$/i)
@@ -187,7 +187,7 @@ export async function fetchNodes(signal?: AbortSignal): Promise<HubSnapshot> {
       ipv4: text(raw.ip_v4) && text(raw.ip_v4) !== '0' ? text(raw.ip_v4) : '',
       ipv6: text(raw.ip_v6) && text(raw.ip_v6) !== '0' ? text(raw.ip_v6) : '',
       metrics: {
-        cpu: num(raw.cpu), load, mem_total: num(raw.ram_total), mem_used: num(raw.ram_used),
+        cpu: raw.cpu == null ? Number.NaN : num(raw.cpu), load, mem_total: num(raw.ram_total), mem_used: num(raw.ram_used),
         swap_total: num(raw.swap_total), swap_used: num(raw.swap_used), disk_total: num(raw.disk_total),
         disk_used: num(raw.disk_used), net_rx: num(raw.net_in_speed), net_tx: num(raw.net_out_speed),
         tcp: num(raw.tcp_conn), udp: num(raw.udp_conn), procs: num(raw.processes),
@@ -546,7 +546,7 @@ export function snapshotToMaps(snapshot: HubSnapshot): { clients: Record<string,
   const clients: Record<string, Client> = {}
   const statuses: Record<string, NodeStatus> = {}
   for (const node of snapshot.nodes) {
-    if (!node || typeof node.id !== 'number')
+    if (!node || (typeof node.id !== 'number' && typeof node.id !== 'string'))
       continue
     try {
       const uuid = String(node.id)
@@ -555,7 +555,7 @@ export function snapshotToMaps(snapshot: HubSnapshot): { clients: Record<string,
     }
     catch (error) {
       // 单个节点的坏数据不影响其他节点
-      console.warn('[hub] skipped malformed node', node, error)
+      console.warn('[CFSM] skipped malformed node', node, error)
     }
   }
   return { clients, statuses }
