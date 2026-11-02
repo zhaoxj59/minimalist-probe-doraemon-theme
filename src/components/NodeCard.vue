@@ -305,7 +305,7 @@ function hasRegion(region: string | null | undefined): boolean {
                 <span class="inline-flex items-center text-sky-500" role="img" title="竹蜻蜓转速（CPU）" aria-label="竹蜻蜓转速（CPU）">
                   <Icon :icon="NODE_METRIC_ICONS.cpu" data-node-metric-icon="cpu" width="12" height="12" aria-hidden="true" />
                 </span>
-                <span class="tabular-nums font-medium">{{ hasStatusMetrics ? (props.node.cpu ?? 0).toFixed(1) + '%' : '-' }}</span>
+                <span class="tabular-nums font-medium">{{ hasStatusMetrics ? `${(props.node.cpu ?? 0).toFixed(1)}%` : '-' }}</span>
               </div>
               <ProgressThin :percentage="props.node.cpu ?? 0" :status="cpuStatus" :height="4" />
             </div>
@@ -315,7 +315,7 @@ function hasRegion(region: string | null | undefined): boolean {
                 <span class="inline-flex items-center text-emerald-500" role="img" title="四次元口袋（内存）" aria-label="四次元口袋（内存）">
                   <Icon :icon="NODE_METRIC_ICONS.memory" data-node-metric-icon="memory" width="12" height="12" aria-hidden="true" />
                 </span>
-                <span class="tabular-nums font-medium">{{ hasStatusMetrics ? memPercentage.toFixed(1) + '%' : '-' }}</span>
+                <span class="tabular-nums font-medium">{{ hasStatusMetrics ? `${memPercentage.toFixed(1)}%` : '-' }}</span>
               </div>
               <ProgressThin :percentage="memPercentage" :status="memStatus" :height="4" />
             </div>
@@ -386,7 +386,7 @@ function hasRegion(region: string | null | undefined): boolean {
                 <Icon :icon="NODE_METRIC_ICONS.disk" data-node-metric-icon="disk" width="13" height="13" class="shrink-0 text-orange-500" aria-hidden="true" />
                 <span class="truncate" title="百宝袋（磁盘）">百宝袋</span>
               </span>
-              <span class="tabular-nums font-medium">{{ hasStatusMetrics ? diskPercentage.toFixed(1) + '%' : '-' }}</span>
+              <span class="tabular-nums font-medium">{{ hasStatusMetrics ? `${diskPercentage.toFixed(1)}%` : '-' }}</span>
             </div>
             <ProgressThin :percentage="diskPercentage" :status="diskStatus" :height="4" />
             <div class="text-[11px] text-muted-foreground truncate">
