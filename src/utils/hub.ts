@@ -346,7 +346,7 @@ function mapCfServer(raw: Record<string, any>): HubNode {
   const hasLastUpdated = lastUpdated > 0
   const lastUpdatedMs = lastUpdated > 1e12 ? lastUpdated : lastUpdated * 1000
   const online = hasExplicitOnline
-    ? explicitOnline || (!explicitOnline && !hasLastUpdated && false)
+    ? explicitOnline
     : hasLastUpdated && Date.now() - lastUpdatedMs < 300000
   const load = Array.isArray(raw.load_avg)
     ? raw.load_avg.map(Number).filter(Number.isFinite)
