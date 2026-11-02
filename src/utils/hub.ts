@@ -284,6 +284,8 @@ function mapCfServer(raw: Record<string, any>): HubNode {
     return typeof n === 'number' && Number.isFinite(n) ? n : 0
   }
   const text = (v: unknown) => typeof v === 'string' ? v : ''
+  // CFSM reports RAM / Swap / Disk capacities in MiB; the theme's formatBytes expects bytes.
+  const mib = (v: unknown) => num(v) * 1024 * 1024
   const onlineValue = raw.is_online ?? raw.online
   const online = onlineValue === true || onlineValue === 1 || onlineValue === '1'
   const rawTimestamp = raw.last_updated ?? raw.timestamp
@@ -303,8 +305,8 @@ function mapCfServer(raw: Record<string, any>): HubNode {
     sort: num(raw.sort_order), public: !(raw.is_hidden === true || raw.is_hidden === 1 || raw.is_hidden === '1'),
     online, last_seen: timestamp > 1e12 ? timestamp / 1000 : timestamp,
     os: text(raw.os), kernel: text(raw.kernel_version), arch: text(raw.arch), cpu_name: text(raw.cpu_info),
-    cpu_cores: num(raw.cpu_cores), mem_total: num(raw.ram_total), swap_total: num(raw.swap_total),
-    disk_total: num(raw.disk_total), agent_version: text(raw.agent_version), price: num(raw.price),
+    cpu_cores: num(raw.cpu_cores), mem_total: mib(raw.ram_total), swap_total: mib(raw.swap_total),
+    disk_total: mib(raw.disk_total), agent_version: text(raw.agent_version), price: num(raw.price),
     currency: text(raw.currency), billing_cycle: text(raw.billing_cycle), expires_at: text(raw.expire_date) || null,
     traffic_limit: trafficLimit, traffic_mode: text(raw.traffic_calc_type) || 'sum',
     traffic_reset_day: num(raw.reset_day), total_rx: num(raw.net_rx), total_tx: num(raw.net_tx),
@@ -312,9 +314,9 @@ function mapCfServer(raw: Record<string, any>): HubNode {
     ipv4: text(raw.ip_v4) && text(raw.ip_v4) !== '0' ? text(raw.ip_v4) : '',
     ipv6: text(raw.ip_v6) && text(raw.ip_v6) !== '0' ? text(raw.ip_v6) : '',
     metrics: {
-      cpu: raw.cpu == null ? Number.NaN : num(raw.cpu), load, mem_total: num(raw.ram_total), mem_used: num(raw.ram_used),
-      swap_total: num(raw.swap_total), swap_used: num(raw.swap_used), disk_total: num(raw.disk_total),
-      disk_used: num(raw.disk_used), net_rx: num(raw.net_in_speed), net_tx: num(raw.net_out_speed),
+      cpu: raw.cpu == null ? Number.NaN : num(raw.cpu), load, mem_total: mib(raw.ram_total), mem_used: mib(raw.ram_used),
+      swap_total: mib(raw.swap_total), swap_used: mib(raw.swap_used), disk_total: mib(raw.disk_total),
+      disk_used: mib(raw.disk_used), net_rx: num(raw.net_in_speed), net_tx: num(raw.net_out_speed),
       tcp: num(raw.tcp_conn), udp: num(raw.udp_conn), procs: num(raw.processes),
       total_rx: num(raw.net_rx), total_tx: num(raw.net_tx),
       month_rx: num(raw.net_rx_monthly), month_tx: num(raw.net_tx_monthly),
@@ -486,7 +488,7 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
         const parsed = typeof value === 'string' && !Number.isFinite(Number(value)) ? Date.parse(value) : num(value)
         return parsed > 1e12 ? parsed / 1000 : parsed
       })(),
-      cpu: num(row.cpu), mem_used: num(row.ram_used), disk_used: num(row.disk_used),
+      cpu: num(row.cpu), mem_used: num(row.ram_used) * 1024 * 1024, disk_used: num(row.disk_used) * 1024 * 1024,
       net_rx: num(row.net_in_speed ?? row.net_rx), net_tx: num(row.net_out_speed ?? row.net_tx),
       disk_read_bps: num(row.disk_read_bps), disk_write_bps: num(row.disk_write_bps),
       disk_read_iops: num(row.disk_read_iops), disk_write_iops: num(row.disk_write_iops),
