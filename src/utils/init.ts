@@ -8,7 +8,7 @@ import { REALTIME_CONFIG } from '@/constants/realtime'
 import { useAppStore } from '@/stores/app'
 import { useNodesStore } from '@/stores/nodes'
 import { getSharedApi } from '@/utils/api'
-import { fetchNodes, HubError, openLiveSocket, snapshotToMaps } from '@/utils/hub'
+import { fetchNodes, getFrontendWsTimeoutMinutes, HubError, openLiveSocket, snapshotToMaps } from '@/utils/hub'
 import { updateNodeContext } from '@/utils/rpc'
 
 const WS_RECONNECT_INTERVAL_MS = REALTIME_CONFIG.websocket.reconnectInterval
@@ -21,6 +21,7 @@ class InitManager {
   private pollTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private socket: WebSocket | null = null
+  private wsTimeoutTimer: ReturnType<typeof setTimeout> | null = null
   private useWebSocket = false
   private isPolling = false
   private destroyed = false
@@ -135,16 +136,38 @@ class InitManager {
         opened = true
         this.nodesStore.updateWsState('connected', 0)
         this.appStore.connectionError = false
+        if (this.wsTimeoutTimer)
+          clearTimeout(this.wsTimeoutTimer)
+        const timeoutMinutes = getFrontendWsTimeoutMinutes()
+        if (timeoutMinutes > 0) {
+          this.wsTimeoutTimer = setTimeout(() => {
+            this.wsTimeoutTimer = null
+            if (this.destroyed || document.hidden || this.socket?.readyState !== WebSocket.OPEN)
+              return
+            this.socket.close(4000, 'cfsm-timeout')
+          }, timeoutMinutes * 60_000)
+        }
       },
       onSnapshot: (snapshot) => {
         this.applySnapshot(snapshot)
         this.failureCount = 0
         this.appStore.connectionError = false
       },
-      onClose: () => {
+      onClose: (event) => {
         this.socket = null
+        if (this.wsTimeoutTimer) {
+          clearTimeout(this.wsTimeoutTimer)
+          this.wsTimeoutTimer = null
+        }
         if (this.destroyed || !this.useWebSocket || document.hidden)
           return
+        if (event.reason === 'cfsm-timeout') {
+          this.nodesStore.updateWsState('disconnected')
+          const continueConnecting = window.confirm('实时连接已达到站点设定的时长。是否继续保持实时连接？')
+          if (continueConnecting && !this.destroyed && !document.hidden)
+            this.connectWebSocket()
+          return
+        }
         // 登录会话失效或公开页被关闭时 hub 会主动断开，重新确认一次登录状态
         void getSharedApi().getMe().then(me => this.appStore.updateLoginState(me.logged_in, me)).catch(() => {})
         this.nodesStore.updateWsState('disconnected')
@@ -223,6 +246,10 @@ class InitManager {
         clearTimeout(this.reconnectTimer)
         this.reconnectTimer = null
       }
+      if (this.wsTimeoutTimer) {
+        clearTimeout(this.wsTimeoutTimer)
+        this.wsTimeoutTimer = null
+      }
       this.socket?.close()
       this.socket = null
       this.nodesStore.updateWsState('disconnected')
@@ -253,6 +280,10 @@ class InitManager {
       this.reconnectTimer = null
     }
     this.useWebSocket = false
+    if (this.wsTimeoutTimer) {
+      clearTimeout(this.wsTimeoutTimer)
+      this.wsTimeoutTimer = null
+    }
     this.socket?.close()
     this.socket = null
     this.nodesStore.clearNodes()
