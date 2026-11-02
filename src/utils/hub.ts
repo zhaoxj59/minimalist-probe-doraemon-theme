@@ -578,10 +578,13 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
     const pingKeys = new Set(ping.map(row => `${row.task_id}:${row.ts}`))
     for (const row of current?.ping ?? []) {
       const key = `${row.task_id}:${row.ts}`
-      if (!pingKeys.has(key)) {
-        ping.push(row)
-        pingKeys.add(key)
-      }
+      if (row.ts * 1000 < cutoffMs || pingKeys.has(key))
+        continue
+      ping.push(row)
+      pingKeys.add(key)
+      const values = lossSamples.get(row.task_id) ?? []
+      values.push(row.loss ?? (row.latency === null ? 100 : 0))
+      lossSamples.set(row.task_id, values)
     }
     for (const [probeId, name] of Object.entries(current?.probes ?? {}))
       probes[probeId] ??= name
