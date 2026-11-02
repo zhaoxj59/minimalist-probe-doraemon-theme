@@ -33,11 +33,17 @@ jobs:
       - name: Build CFSM theme
         run: bun run build
 
-      - name: Publish dist directory to cfsm-port
+      - name: Verify generated theme package
+        run: |
+          test -s theme.tar.gz
+          test -s dist/index.html
+          tar -tzf theme.tar.gz
+
+      - name: Publish dist directory and theme package to cfsm-port
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f dist
+          git add -f dist theme.tar.gz
           if git diff --cached --quiet; then
             echo "No generated theme changes to commit."
           else
