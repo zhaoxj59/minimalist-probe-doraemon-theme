@@ -166,8 +166,13 @@ export async function fetchNodes(signal?: AbortSignal): Promise<HubSnapshot> {
     }
     const text = (v: unknown) => typeof v === 'string' ? v : ''
     const online = raw.is_online === true || raw.is_online === 1 || raw.is_online === '1'
-    const timestamp = num(raw.last_updated) || num(raw.timestamp)
-    const load = typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(/[ ,]+/).map(Number).filter(Number.isFinite) : []
+    const rawTimestamp = raw.last_updated ?? raw.timestamp
+    const timestampValue = typeof rawTimestamp === 'string' && !Number.isFinite(Number(rawTimestamp))
+      ? Date.parse(rawTimestamp) : num(rawTimestamp)
+    const timestamp = Number.isFinite(timestampValue) ? timestampValue : 0
+    const load = Array.isArray(raw.load_avg)
+      ? raw.load_avg.map(Number).filter(Number.isFinite)
+      : typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(/[ ,]+/).map(Number).filter(Number.isFinite) : []
     const trafficText = text(raw.traffic_limit)
     const match = trafficText.match(/^([\d.]+)\s*(B|KB|MB|GB|TB)$/i)
     const trafficLimit = match
@@ -322,7 +327,11 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
       return typeof n === 'number' && Number.isFinite(n) ? n : Number.NaN
     }
     const metrics = (Array.isArray(rows) ? rows : []).map(row => ({
-      ts: num(row.timestamp) > 1e12 ? num(row.timestamp) / 1000 : num(row.timestamp),
+      ts: (() => {
+        const value = row.timestamp
+        const parsed = typeof value === 'string' && !Number.isFinite(Number(value)) ? Date.parse(value) : num(value)
+        return parsed > 1e12 ? parsed / 1000 : parsed
+      })(),
       cpu: num(row.cpu), mem_used: num(row.ram_used), disk_used: num(row.disk_used),
       net_rx: num(row.net_in_speed ?? row.net_rx), net_tx: num(row.net_out_speed ?? row.net_tx),
     })).filter(row => Number.isFinite(row.ts) && row.ts > 0)
