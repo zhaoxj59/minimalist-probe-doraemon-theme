@@ -177,17 +177,67 @@ const CF_PROBE_FIELDS = [
 ] as const
 
 function buildCurrentPingHistory(raw: Record<string, any>, sysConfig: Record<string, any>): HubHistory {
-  const rawTimestamp = raw.last_updated ?? raw.timestamp
-  const parsed = typeof rawTimestamp === 'string' && !Number.isFinite(Number(rawTimestamp))
-    ? Date.parse(rawTimestamp) : Number(rawTimestamp)
-  const ts = Number.isFinite(parsed) && parsed > 0
-    ? (parsed > 1e12 ? parsed / 1000 : parsed)
-    : Date.now() / 1000
   const probes: Record<string, string> = {}
   const loss: Record<string, number> = {}
   const ping: HubPingRow[] = []
+  const sampleLoss = new Map<number, number[]>()
+  const windowFields = [
+    { id: 1, key: 'ct' },
+    { id: 2, key: 'cu' },
+    { id: 3, key: 'cm' },
+    { id: 4, key: 'bd' },
+  ] as const
+  const lossByTimestamp = new Map<number, Record<string, unknown>>()
+  if (Array.isArray(raw.loss)) {
+    for (const point of raw.loss) {
+      const tsValue = Number(point?.ts)
+      if (Number.isFinite(tsValue) && tsValue > 0)
+        lossByTimestamp.set(tsValue, point)
+    }
+  }
 
+  // 优先使用列表接口提供的真实时间窗口数据，保留每个探测点的原始时间戳。
+  if (Array.isArray(raw.ping)) {
+    for (const point of raw.ping) {
+      const tsValue = Number(point?.ts)
+      if (!Number.isFinite(tsValue) || tsValue <= 0)
+        continue
+      const ts = tsValue > 1e12 ? tsValue / 1000 : tsValue
+      const lossPoint = lossByTimestamp.get(tsValue)
+      for (const probe of windowFields) {
+        const value = point?.[probe.key]
+        if (value === false || value === undefined)
+          continue
+        if (value !== null && !(typeof value === 'number' && Number.isFinite(value)))
+          continue
+        const nameField = CF_PROBE_FIELDS[probe.id - 1]
+        const name = typeof sysConfig[nameField.config] === 'string' && sysConfig[nameField.config].trim()
+          ? sysConfig[nameField.config].trim() : nameField.fallback
+        probes[String(probe.id)] = name
+        const lossValue = lossPoint?.[probe.key]
+        const row: HubPingRow = { task_id: probe.id, ts, latency: value }
+        if (typeof lossValue === 'number' && Number.isFinite(lossValue)) {
+          row.loss = lossValue
+          const values = sampleLoss.get(probe.id) ?? []
+          values.push(lossValue)
+          sampleLoss.set(probe.id, values)
+        }
+        ping.push(row)
+      }
+    }
+  }
+
+  const rawTimestamp = raw.last_updated ?? raw.timestamp
+  const parsed = typeof rawTimestamp === 'string' && !Number.isFinite(Number(rawTimestamp))
+    ? Date.parse(rawTimestamp) : Number(rawTimestamp)
+  const currentTs = Number.isFinite(parsed) && parsed > 0
+    ? (parsed > 1e12 ? parsed / 1000 : parsed)
+    : Date.now() / 1000
+
+  // 最新单值字段用于窗口未开启/无历史点时兜底，也用于 4 个自定义探测节点。
   for (const probe of CF_PROBE_FIELDS) {
+    if (ping.some(row => row.task_id === probe.id))
+      continue
     const value = raw[probe.ping]
     const lossValue = raw[probe.loss]
     if (value === false || value === undefined)
@@ -197,15 +247,20 @@ function buildCurrentPingHistory(raw: Record<string, any>, sysConfig: Record<str
     const name = typeof sysConfig[probe.config] === 'string' && sysConfig[probe.config].trim()
       ? sysConfig[probe.config].trim() : probe.fallback
     probes[String(probe.id)] = name
-    const row: HubPingRow = { task_id: probe.id, ts, latency: value }
-    if (typeof lossValue === 'number' && Number.isFinite(lossValue))
+    const row: HubPingRow = { task_id: probe.id, ts: currentTs, latency: value }
+    if (typeof lossValue === 'number' && Number.isFinite(lossValue)) {
       row.loss = lossValue
+      sampleLoss.set(probe.id, [lossValue])
+    }
     ping.push(row)
-    if (typeof lossValue === 'number' && Number.isFinite(lossValue))
-      loss[String(probe.id)] = lossValue
   }
 
-  return { metrics: [], ping, probes, loss }
+  for (const [id, values] of sampleLoss) {
+    if (values.length)
+      loss[String(id)] = values.reduce((sum, value) => sum + value, 0) / values.length
+  }
+
+  return { metrics: [], ping: ping.sort((a, b) => a.ts - b.ts), probes, loss }
 }
 
 export async function fetchNodes(signal?: AbortSignal): Promise<HubSnapshot> {
