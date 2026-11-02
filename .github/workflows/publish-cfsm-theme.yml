@@ -1,0 +1,63 @@
+name: Publish CFSM Theme
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-cfsm-theme
+  cancel-in-progress: false
+
+jobs:
+  publish-theme:
+    if: github.ref == 'refs/heads/cfsm-port'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout theme source
+        uses: actions/checkout@v6
+        with:
+          ref: cfsm-port
+          fetch-depth: 0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build CFSM theme
+        run: bun run build
+
+      - name: Verify build output
+        run: |
+          test -s dist/index.html
+          test -d dist/assets
+          test -n "$(find dist/assets -type f -print -quit)"
+          test -s theme.tar.gz
+          tar -tzf theme.tar.gz >/dev/null
+
+      - name: Prepare deploy branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          output_dir="$RUNNER_TEMP/cfsm-theme-output"
+          mkdir -p "$output_dir"
+          cp -a dist/. "$output_dir/"
+          test -s "$output_dir/index.html"
+          test -d "$output_dir/assets"
+
+          git checkout --orphan cfsm-deploy
+          git clean -fdx
+          cp -a "$output_dir/." .
+          test -s index.html
+          test -d assets
+          git add -A
+          git commit -m "Publish CFSM Doraemon theme"
+          git push --force origin HEAD:cfsm-deploy
