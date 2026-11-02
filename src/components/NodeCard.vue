@@ -75,6 +75,7 @@ const nodeCardPingPanelClass = computed(() => isMiniNodeCard.value ? 'gap-1 p-1'
 const formatBytes = (bytes: number) => formatBytesWithConfig(bytes, appStore.byteDecimals)
 const formatBytesPerSecond = (bytes: number) => formatBytesPerSecondWithConfig(bytes, appStore.byteDecimals)
 const offlineTime = computed(() => formatDateTime(props.node.time))
+const hasStatusMetrics = computed(() => props.node.message !== 'unavailable')
 
 const cpuStatus = computed(() => getStatus(props.node.cpu ?? 0))
 const memPercentage = computed(() => getMemoryPercentage(props.node))
@@ -304,7 +305,7 @@ function hasRegion(region: string | null | undefined): boolean {
                 <span class="inline-flex items-center text-sky-500" role="img" title="竹蜻蜓转速（CPU）" aria-label="竹蜻蜓转速（CPU）">
                   <Icon :icon="NODE_METRIC_ICONS.cpu" data-node-metric-icon="cpu" width="12" height="12" aria-hidden="true" />
                 </span>
-                <span class="tabular-nums font-medium">{{ (props.node.cpu ?? 0).toFixed(1) }}%</span>
+                <span class="tabular-nums font-medium">{{ hasStatusMetrics ? (props.node.cpu ?? 0).toFixed(1) + '%' : '-' }}</span>
               </div>
               <ProgressThin :percentage="props.node.cpu ?? 0" :status="cpuStatus" :height="4" />
             </div>
@@ -314,13 +315,13 @@ function hasRegion(region: string | null | undefined): boolean {
                 <span class="inline-flex items-center text-emerald-500" role="img" title="四次元口袋（内存）" aria-label="四次元口袋（内存）">
                   <Icon :icon="NODE_METRIC_ICONS.memory" data-node-metric-icon="memory" width="12" height="12" aria-hidden="true" />
                 </span>
-                <span class="tabular-nums font-medium">{{ memPercentage.toFixed(1) }}%</span>
+                <span class="tabular-nums font-medium">{{ hasStatusMetrics ? memPercentage.toFixed(1) + '%' : '-' }}</span>
               </div>
               <ProgressThin :percentage="memPercentage" :status="memStatus" :height="4" />
             </div>
 
             <div class="col-span-2 text-[11px] text-muted-foreground truncate">
-              {{ formatBytes(props.node.ram ?? 0) }} / {{ formatBytes(props.node.mem_total ?? 0) }}
+              {{ hasStatusMetrics ? `${formatBytes(props.node.ram ?? 0)} / ${formatBytes(props.node.mem_total ?? 0)}` : '等待首份监控数据' }}
             </div>
           </div>
 
@@ -359,7 +360,7 @@ function hasRegion(region: string | null | undefined): boolean {
             </div>
             <ProgressThin :percentage="props.node.cpu ?? 0" :status="cpuStatus" :height="4" />
             <div class="text-[11px] text-muted-foreground truncate" title="铜锣烧消耗指数（1 / 5 / 15 分钟负载）">
-              铜锣烧 {{ (props.node.load ?? 0).toFixed(2) }}, {{ (props.node.load5 ?? 0).toFixed(2) }}, {{ (props.node.load15 ?? 0).toFixed(2) }}
+              铜锣烧 {{ hasStatusMetrics ? `${(props.node.load ?? 0).toFixed(2)}, ${(props.node.load5 ?? 0).toFixed(2)}, ${(props.node.load15 ?? 0).toFixed(2)}` : '-' }}
             </div>
           </div>
 
@@ -385,11 +386,11 @@ function hasRegion(region: string | null | undefined): boolean {
                 <Icon :icon="NODE_METRIC_ICONS.disk" data-node-metric-icon="disk" width="13" height="13" class="shrink-0 text-orange-500" aria-hidden="true" />
                 <span class="truncate" title="百宝袋（磁盘）">百宝袋</span>
               </span>
-              <span class="tabular-nums font-medium">{{ diskPercentage.toFixed(1) }}%</span>
+              <span class="tabular-nums font-medium">{{ hasStatusMetrics ? diskPercentage.toFixed(1) + '%' : '-' }}</span>
             </div>
             <ProgressThin :percentage="diskPercentage" :status="diskStatus" :height="4" />
             <div class="text-[11px] text-muted-foreground truncate">
-              {{ formatBytes(props.node.disk ?? 0) }} / {{ formatBytes(props.node.disk_total ?? 0) }}
+              {{ hasStatusMetrics ? `${formatBytes(props.node.disk ?? 0)} / ${formatBytes(props.node.disk_total ?? 0)}` : '-' }}
             </div>
           </div>
 
@@ -423,11 +424,11 @@ function hasRegion(region: string | null | undefined): boolean {
           <div class="flex flex-col gap-0.5 rounded-lg bg-slate-500/5 min-w-0 overflow-hidden" :class="nodeCardMetricBoxClass">
             <div class="text-[11px] text-success flex items-center gap-0.5" title="任意门传送 · 上行">
               <Icon icon="tabler:chevron-up" width="11" height="11" />
-              <span data-node-compact-metric-value class="truncate min-w-0 overflow-hidden">{{ formatBytesPerSecond(props.node.net_out ?? 0) }}</span>
+              <span data-node-compact-metric-value class="truncate min-w-0 overflow-hidden">{{ hasStatusMetrics ? formatBytesPerSecond(props.node.net_out ?? 0) : '-' }}</span>
             </div>
             <div class="text-[11px] text-blue-600 flex items-center gap-0.5" title="任意门传送 · 下行">
               <Icon icon="tabler:chevron-down" width="11" height="11" />
-              <span data-node-compact-metric-value class="truncate min-w-0 overflow-hidden">{{ formatBytesPerSecond(props.node.net_in ?? 0) }}</span>
+              <span data-node-compact-metric-value class="truncate min-w-0 overflow-hidden">{{ hasStatusMetrics ? formatBytesPerSecond(props.node.net_in ?? 0) : '-' }}</span>
             </div>
           </div>
 
