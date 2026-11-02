@@ -32,6 +32,12 @@ export interface RecordFormat {
   temp: number | null
   disk: number | null
   disk_total: number | null
+  disk_read_bps?: number | null
+  disk_write_bps?: number | null
+  disk_read_iops?: number | null
+  disk_write_iops?: number | null
+  disk_await_ms?: number | null
+  disk_util?: number | null
   net_in: number | null
   net_out: number | null
   net_total_up: number | null
