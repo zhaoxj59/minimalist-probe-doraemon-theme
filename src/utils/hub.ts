@@ -170,7 +170,7 @@ export async function fetchNodes(signal?: AbortSignal): Promise<HubSnapshot> {
     const timestamp = num(raw.last_updated) || num(raw.timestamp) || Date.now()
     const load = typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(/[ ,]+/).map(Number).filter(Number.isFinite) : []
     const trafficText = text(raw.traffic_limit)
-    const match = trafficText.match(/^([\\d.]+)\\s*(B|KB|MB|GB|TB)$/i)
+    const match = trafficText.match(/^([\d.]+)\s*(B|KB|MB|GB|TB)$/i)
     const trafficLimit = match
       ? Number(match[1]) * ({ B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }[match[2].toUpperCase() as 'B' | 'KB' | 'MB' | 'GB' | 'TB'])
       : num(raw.traffic_limit)
@@ -325,7 +325,7 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
     const metrics = (Array.isArray(rows) ? rows : []).map(row => ({
       ts: num(row.timestamp) > 1e12 ? num(row.timestamp) / 1000 : num(row.timestamp),
       cpu: num(row.cpu), mem_used: num(row.ram_used), disk_used: num(row.disk_used),
-      net_rx: num(row.net_rx), net_tx: num(row.net_tx),
+      net_rx: num(row.net_in_speed ?? row.net_rx), net_tx: num(row.net_out_speed ?? row.net_tx),
     })).filter(row => Number.isFinite(row.ts) && row.ts > 0)
     // CFSM 的此接口提供性能历史；没有提供历史探测曲线时不伪造 ping 数据。
     return { metrics, ping: [], probes: {}, loss: {} } satisfies HubHistory
