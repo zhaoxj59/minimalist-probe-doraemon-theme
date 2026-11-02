@@ -350,27 +350,35 @@ async function fetchRecords() {
     // CFSM 的近期窗口与 /api/history/all 历史行都包含真实 Ping 样本；
     // fetchNodeHistory 会按真实 timestamp 合并并去重，不用性能指标拼造延迟曲线。
     if (isCfServer(requestedUuid)) {
-      const history = await fetchNodeHistory(requestedUuid, { hours: selectedHours.value, series: 'ping' })
+      // 自定义起止时间需要取站点允许的完整窗口，再按用户选择的精确时间裁剪。
+      const range = appliedCustomRange.value
+      const historyHours = range ? maxPingRecordPreserveTime.value : selectedHours.value
+      const history = await fetchNodeHistory(requestedUuid, { hours: historyHours, series: 'ping' })
       if (sequence !== fetchRecordsSequence || requestedUuid !== props.uuid)
         return
       rememberProbes(history)
-      const records: PingRecord[] = history.ping.map(row => ({
+      const historyPing = range
+        ? history.ping.filter(row => row.ts * 1000 >= range.start.valueOf() && row.ts * 1000 <= range.end.valueOf())
+        : history.ping
+      const records: PingRecord[] = historyPing.map(row => ({
         client: requestedUuid,
         task_id: row.task_id,
         time: new Date(row.ts * 1000).toISOString(),
         value: row.latency == null ? -1 : row.latency,
       })).sort((a, b) => dayjs(a.time).valueOf() - dayjs(b.time).valueOf())
-      const probeIds = [...new Set(history.ping.map(row => row.task_id))]
+      const probeIds = [...new Set(historyPing.map(row => row.task_id))]
       const nextTasks: PingTaskInfo[] = probeIds.map((id) => {
-        const samples = history.ping.filter(row => row.task_id === id && row.latency != null).map(row => row.latency as number)
+        const taskRows = historyPing.filter(row => row.task_id === id)
+        const samples = taskRows.filter(row => row.latency != null).map(row => row.latency as number)
+        const lossSamples = taskRows.map(row => row.loss ?? (row.latency === null ? 100 : 0))
         const name = history.probes[String(id)] || `监控 ${id}`
-        const loss = history.loss[String(id)] ?? 0
+        const loss = lossSamples.length ? lossSamples.reduce((sum, value) => sum + value, 0) / lossSamples.length : (history.loss[String(id)] ?? 0)
         return {
           id, name, interval: 0, loss,
           min: samples.length ? Math.min(...samples) : undefined,
           max: samples.length ? Math.max(...samples) : undefined,
           avg: samples.length ? samples.reduce((sum, value) => sum + value, 0) / samples.length : undefined,
-          latest: samples.at(-1), total: history.ping.filter(row => row.task_id === id).length,
+          latest: samples.at(-1), total: taskRows.length,
           valid: samples.length, type: 'ping',
         }
       })
