@@ -706,7 +706,7 @@ export function hubNodeToStatus(node: HubNode): NodeStatus {
     client: String(node.id),
     time: lastSeen > 0 ? new Date(lastSeen * 1000).toISOString() : '',
     cpu: num(metrics?.cpu),
-    gpu: num(metrics?.gpu),
+    gpu: typeof metrics?.gpu === 'number' && Number.isFinite(metrics.gpu) ? metrics.gpu : Number.NaN,
     ram: num(metrics?.mem_used),
     ram_total: num(metrics?.mem_total, num(node.mem_total)),
     swap: num(metrics?.swap_used),
