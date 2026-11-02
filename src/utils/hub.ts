@@ -301,7 +301,7 @@ function mapCfServer(raw: Record<string, any>): HubNode {
       gpuItems = []
     }
   }
-  const gpuUsages = gpuItems.map(item => Number(item.info)).filter(value => Number.isFinite(value))
+  const gpuUsages = gpuItems.map(item => item.info == null || item.info === '' ? Number.NaN : Number(item.info)).filter(value => Number.isFinite(value))
   const gpuAverage = gpuUsages.length ? gpuUsages.reduce((sum, value) => sum + value, 0) / gpuUsages.length : undefined
   const gpuName = gpuItems.map(item => typeof item.name === 'string' ? item.name.trim() : '').filter(Boolean).join(', ')
   const onlineValue = raw.is_online ?? raw.online
