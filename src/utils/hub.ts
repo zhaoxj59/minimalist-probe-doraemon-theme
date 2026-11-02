@@ -333,8 +333,10 @@ function mapCfServer(raw: Record<string, any>): HubNode {
     traffic_limit: trafficLimit, traffic_mode: text(raw.traffic_calc_type) || 'sum',
     traffic_reset_day: num(raw.reset_day), total_rx: num(raw.net_rx), total_tx: num(raw.net_tx),
     month_rx: num(raw.net_rx_monthly), month_tx: num(raw.net_tx_monthly),
-    ipv4: text(raw.ip_v4) && text(raw.ip_v4) !== '0' ? text(raw.ip_v4) : '',
-    ipv6: text(raw.ip_v6) && text(raw.ip_v6) !== '0' ? text(raw.ip_v6) : '',
+    // CFSM 的 ip_v4 / ip_v6 是可达性标记（'0'/'1'），不是 IP 地址；公共 API 不暴露真实公网 IP。
+    // 不把标记 '1' 传给 GeoIP 查询或当作节点地址显示。
+    ipv4: '',
+    ipv6: '',
     metrics: {
       cpu: raw.cpu == null ? Number.NaN : num(raw.cpu), load, gpu: gpuAverage, mem_total: mib(raw.ram_total), mem_used: mib(raw.ram_used),
       swap_total: mib(raw.swap_total), swap_used: mib(raw.swap_used), disk_total: mib(raw.disk_total),
