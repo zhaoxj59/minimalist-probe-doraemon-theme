@@ -258,7 +258,8 @@ function buildNodeSummary(node: NodeData, recordsByClient: Map<string, StatusRec
 
   const metricsAvailable = records.some(record => Number.isFinite(record.cpu)
     || (Number.isFinite(record.ram) && Number.isFinite(record.ram_total) && record.ram_total > 0)
-    || (Number.isFinite(record.disk) && Number.isFinite(record.disk_total) && record.disk_total > 0))
+    || (Number.isFinite(record.disk) && Number.isFinite(record.disk_total) && record.disk_total > 0)
+    || Number.isFinite(record.load) || Number.isFinite(record.net_in) || Number.isFinite(record.net_out))
 
   return {
     uuid: node.uuid,
@@ -415,6 +416,9 @@ const summaryLines = computed(() => {
   lines.push(`当前范围：${rangeOptions.value.find(option => option.key === selectedRange.value)?.label ?? '-'}，节点 ${props.nodes.length} 台，离线 ${offlineNodes.value.length} 台。`)
   if (offlineNodes.value.length)
     lines.push(`离线节点：${offlineNodes.value.slice(0, 6).map(node => node.name).join('、')}${offlineNodes.value.length > 6 ? '…' : ''}`)
+  const missingMetricNodes = summaries.value.filter(node => !node.metricsAvailable)
+  if (missingMetricNodes.length)
+    lines.push(`${missingMetricNodes.length} 台服务器暂无有效性能监控样本，已从 CPU、内存、磁盘峰值及异常评分中排除。`)
   if (diskFullSoon.value.length)
     lines.push(`${diskFullSoon.value[0]?.name} 磁盘风险最高，预计 ${Math.ceil(diskFullSoon.value[0]?.diskPredictionDays ?? 0)} 天后满。`)
   if (trafficWarnings.value.length)
