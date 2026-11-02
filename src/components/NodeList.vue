@@ -49,6 +49,10 @@ const emit = defineEmits<{
   pingClick: [node: NodeData]
 }>()
 
+function hasStatusMetrics(node: NodeData): boolean {
+  return node.message !== 'unavailable'
+}
+
 const rowStaggerMs = UI_CONFIG.motion.staggerMs
 const rowStaggerLimit = UI_CONFIG.motion.staggerLimit
 
@@ -511,10 +515,10 @@ function buildNodeMetadataItems(node: NodeData): NodeMetadataItem[] {
                   <div class="space-y-1">
                     <div class="text-[11px] font-medium text-foreground/75 truncate">
                       <span class="inline group-hover:hidden">
-                        {{ (node.cpu ?? 0).toFixed(1) }}%
+                        {{ hasStatusMetrics(node) ? `${(node.cpu ?? 0).toFixed(1)}%` : '-' }}
                       </span>
                       <span class="hidden group-hover:inline">
-                        {{ (node.load ?? 0).toFixed(2) }}, {{ (node.load5 ?? 0).toFixed(2) }}, {{ (node.load15 ?? 0).toFixed(2) }}
+                        {{ hasStatusMetrics(node) ? `${(node.load ?? 0).toFixed(2)}, ${(node.load5 ?? 0).toFixed(2)}, ${(node.load15 ?? 0).toFixed(2)}` : '-' }}
                       </span>
                     </div>
                     <ProgressThin :percentage="node.cpu ?? 0" :status="getStatus(node.cpu ?? 0)" :height="4" />
@@ -526,14 +530,14 @@ function buildNodeMetadataItems(node: NodeData): NodeMetadataItem[] {
                   <div class="space-y-1">
                     <div class="text-[11px] font-medium text-foreground/75 truncate">
                       <span class="inline group-hover:hidden">
-                        {{ ((node.ram ?? 0) / (node.mem_total || 1) * 100).toFixed(1) }}%
+                        {{ hasStatusMetrics(node) ? `${((node.ram ?? 0) / (node.mem_total || 1) * 100).toFixed(1)}%` : '-' }}
                       </span>
                       <span class="hidden group-hover:inline">
-                        {{ formatBytes(node.ram ?? 0) }} / {{ formatBytes(node.mem_total ?? 0) }}
+                        {{ hasStatusMetrics(node) ? `${formatBytes(node.ram ?? 0)} / ${formatBytes(node.mem_total ?? 0)}` : '等待首份监控数据' }}
                       </span>
                     </div>
                     <ProgressThin
-                      :percentage="(node.ram ?? 0) / (node.mem_total || 1) * 100"
+                      :percentage="hasStatusMetrics(node) ? (node.ram ?? 0) / (node.mem_total || 1) * 100 : 0"
                       :status="getStatus((node.ram ?? 0) / (node.mem_total || 1) * 100)" :height="4"
                     />
                   </div>
@@ -544,14 +548,14 @@ function buildNodeMetadataItems(node: NodeData): NodeMetadataItem[] {
                   <div class="space-y-1">
                     <div class="text-[11px] font-medium text-foreground/75 truncate">
                       <span class="inline group-hover:hidden">
-                        {{ ((node.disk ?? 0) / (node.disk_total || 1) * 100).toFixed(1) }}%
+                        {{ hasStatusMetrics(node) ? `${((node.disk ?? 0) / (node.disk_total || 1) * 100).toFixed(1)}%` : '-' }}
                       </span>
                       <span class="hidden group-hover:inline">
-                        {{ formatBytes(node.disk ?? 0) }} / {{ formatBytes(node.disk_total ?? 0) }}
+                        {{ hasStatusMetrics(node) ? `${formatBytes(node.disk ?? 0)} / ${formatBytes(node.disk_total ?? 0)}` : '-' }}
                       </span>
                     </div>
                     <ProgressThin
-                      :percentage="(node.disk ?? 0) / (node.disk_total || 1) * 100"
+                      :percentage="hasStatusMetrics(node) ? (node.disk ?? 0) / (node.disk_total || 1) * 100 : 0"
                       :status="getStatus((node.disk ?? 0) / (node.disk_total || 1) * 100)" :height="4"
                     />
                   </div>
@@ -587,11 +591,11 @@ function buildNodeMetadataItems(node: NodeData): NodeMetadataItem[] {
                   <div class="text-[11px] font-medium flex flex-col">
                     <span class="text-success flex flex-row gap-1 items-center truncate">
                       <Icon icon="tabler:chevron-up" width="12" height="12" class="shrink-0" />
-                      {{ formatBytesPerSecond(node.net_out ?? 0) }}
+                      {{ hasStatusMetrics(node) ? formatBytesPerSecond(node.net_out ?? 0) : '-' }}
                     </span>
                     <span class="text-blue-600 dark:text-blue-400 flex flex-row gap-1 items-center truncate">
                       <Icon icon="tabler:chevron-down" width="12" height="12" class="shrink-0" />
-                      {{ formatBytesPerSecond(node.net_in ?? 0) }}
+                      {{ hasStatusMetrics(node) ? formatBytesPerSecond(node.net_in ?? 0) : '-' }}
                     </span>
                   </div>
                 </div>
