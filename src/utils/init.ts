@@ -115,9 +115,18 @@ class InitManager {
     }
   }
 
+  private isDetailRoute(): boolean {
+    return location.hash.startsWith('#/server/') || location.hash.startsWith('#/instance/')
+  }
+
   // ==================== 实时数据 ====================
 
   private startRealtime(): void {
+    if (this.isDetailRoute()) {
+      this.useWebSocket = false
+      this.nodesStore.updateWsState('disconnected')
+      return
+    }
     this.useWebSocket = this.appStore.rpcTransportMode === 'websocket' && typeof WebSocket !== 'undefined'
     if (this.useWebSocket)
       this.connectWebSocket()
@@ -126,7 +135,7 @@ class InitManager {
   }
 
   private connectWebSocket(): void {
-    if (this.destroyed || !this.useWebSocket || document.hidden)
+    if (this.destroyed || !this.useWebSocket || document.hidden || this.isDetailRoute())
       return
 
     this.nodesStore.updateWsState('connecting', this.nodesStore.wsReconnectAttempts)
@@ -270,6 +279,8 @@ class InitManager {
       return
     void this.runStartupRequests().then((recovered) => {
       if (!recovered || this.destroyed)
+        return
+      if (this.isDetailRoute())
         return
       if (this.useWebSocket)
         this.connectWebSocket()
