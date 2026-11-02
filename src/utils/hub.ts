@@ -575,7 +575,9 @@ export function countryToFlag(code: string | undefined): string {
 
 const CURRENCY_SYMBOL: Record<string, string> = {
   CNY: '¥',
-  USD: '
+  USD: '\u0024',
+  JPY: '¥',
+  HKD: 'HK\u0024',
   EUR: '€',
   GBP: '£',
   RUB: '₽',
@@ -583,7 +585,7 @@ const CURRENCY_SYMBOL: Record<string, string> = {
   INR: '₹',
   VND: '₫',
   THB: '฿',
-  CAD: 'CA$',
+  CAD: 'CA\u0024',
 }
 
 /** hub 的币种是三位 ISO 代码；主题按「符号 + 金额」显示，未收录的代码保留原样并加空格 */
