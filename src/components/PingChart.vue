@@ -13,8 +13,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { PING_RECORD_MAX_COUNT } from '@/constants/load'
 import { loadPingRecordsWithTasks } from '@/services/history.service'
 import { loadPingMetricStats, loadPublicPingTasks, queryMetrics } from '@/services/metrics.service'
-import { fetchNodeHistory, isCfServer, rememberProbes } from '@/utils/hub'
 import { useAppStore } from '@/stores/app'
+import { fetchNodeHistory, isCfServer, rememberProbes } from '@/utils/hub'
 import { ACCESSIBLE_LINE_TYPES, getChartSeriesPalette } from '@/utils/chartPalette'
 import { isPingMetric, normalizeMetricSeriesList, orderPingTasksByBackend, PING_LATENCY_METRIC, pingTaskId, pingTaskName } from '@/utils/metricSeries'
 import { cutPeakValues, interpolateNullsLinear } from '@/utils/recordHelper'
@@ -364,7 +364,7 @@ async function fetchRecords() {
         client: requestedUuid,
         task_id: row.task_id,
         time: new Date(row.ts * 1000).toISOString(),
-        value: row.latency == null ? -1 : row.latency,
+        value: row.latency ?? -1,
       })).sort((a, b) => dayjs(a.time).valueOf() - dayjs(b.time).valueOf())
       const probeIds = [...new Set(historyPing.map(row => row.task_id))]
       const nextTasks: PingTaskInfo[] = probeIds.map((id) => {
@@ -374,12 +374,17 @@ async function fetchRecords() {
         const name = history.probes[String(id)] || `监控 ${id}`
         const loss = lossSamples.length ? lossSamples.reduce((sum, value) => sum + value, 0) / lossSamples.length : (history.loss[String(id)] ?? 0)
         return {
-          id, name, interval: 0, loss,
+          id,
+          name,
+          interval: 0,
+          loss,
           min: samples.length ? Math.min(...samples) : undefined,
           max: samples.length ? Math.max(...samples) : undefined,
           avg: samples.length ? samples.reduce((sum, value) => sum + value, 0) / samples.length : undefined,
-          latest: samples.at(-1), total: taskRows.length,
-          valid: samples.length, type: 'ping',
+          latest: samples.at(-1),
+          total: taskRows.length,
+          valid: samples.length,
+          type: 'ping',
         }
       })
       remoteData.value = records
