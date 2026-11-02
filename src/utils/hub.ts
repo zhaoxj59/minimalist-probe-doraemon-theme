@@ -323,6 +323,8 @@ export async function fetchNodeDetail(id: string | number, signal?: AbortSignal)
     throw new HubError(502, 'Invalid server detail response')
   const sysConfig = response.sysConfig && typeof response.sysConfig === 'object' ? response.sysConfig : {}
   const node = mapCfServer(raw)
+  if (!cfServerIds.includes(String(node.id)))
+    cfServerIds.push(String(node.id))
   const history = buildCurrentPingHistory(raw, sysConfig)
   cfPingHistory.set(String(node.id), history)
   rememberProbes(history)
