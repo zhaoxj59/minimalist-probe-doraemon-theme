@@ -22,8 +22,8 @@ import { loadMetricDefinitions, loadPublicPingTasks, queryMetrics } from '@/serv
 import { useAppStore } from '@/stores/app'
 import { useNodesStore } from '@/stores/nodes'
 import { getChartSeriesPalette, getLoadChartPalette } from '@/utils/chartPalette'
-import { fetchNodeHistory, isCfServer } from '@/utils/hub'
 import { formatBytes, formatBytesSplit } from '@/utils/helper'
+import { fetchNodeHistory, isCfServer } from '@/utils/hub'
 import { comparePingTaskOrder, createPingTaskOrderMap, metricTags, normalizeMetricSeriesList } from '@/utils/metricSeries'
 import { fillMissingTimePoints } from '@/utils/recordHelper'
 import { getSharedRpc } from '@/utils/rpc'
@@ -317,7 +317,7 @@ function cfHistoryToRecordFormat(rows: Awaited<ReturnType<typeof fetchNodeHistor
         memory: memUsed != null && memTotal != null && memTotal > 0 ? memUsed / memTotal * 100 : null,
         temperature: null,
         device_index: deviceIndex,
-        device_name: typeof item.name === 'string' ? item.name : 'GPU ' + (deviceIndex + 1),
+        device_name: typeof item.name === 'string' ? item.name : `GPU ${deviceIndex + 1}`,
         mem_used: memUsed == null ? undefined : memUsed * 1024 * 1024,
         mem_total: memTotal == null ? undefined : memTotal * 1024 * 1024,
       }
@@ -325,17 +325,36 @@ function cfHistoryToRecordFormat(rows: Awaited<ReturnType<typeof fetchNodeHistor
     const gpuUsages = Object.values(gpuDetailed).map(item => item.usage).filter((value): value is number => value != null && Number.isFinite(value))
     const gpuAverage = gpuUsages.length ? gpuUsages.reduce((sum, value) => sum + value, 0) / gpuUsages.length : null
     return {
-      client: props.uuid, time, cpu: metricValue(row.cpu), gpu: gpuAverage, gpu_usage: gpuAverage, gpu_memory: null,
+      client: props.uuid,
+      time,
+      cpu: metricValue(row.cpu),
+      gpu: gpuAverage,
+      gpu_usage: gpuAverage,
+      gpu_memory: null,
       gpu_detailed: Object.keys(gpuDetailed).length ? gpuDetailed : undefined,
-      ram: metricValue(row.mem_used), ram_total: nodeInfo.value?.mem_total ?? null,
-      swap: null, swap_total: nodeInfo.value?.swap_total ?? null, load: null, temp: null,
-      disk: metricValue(row.disk_used), disk_total: nodeInfo.value?.disk_total ?? null,
-      disk_read_bps: metricValue(row.disk_read_bps), disk_write_bps: metricValue(row.disk_write_bps),
-      disk_read_iops: metricValue(row.disk_read_iops), disk_write_iops: metricValue(row.disk_write_iops),
-      disk_await_ms: metricValue(row.disk_await_ms), disk_util: metricValue(row.disk_util),
-      net_in: metricValue(row.net_rx), net_out: metricValue(row.net_tx),
-      net_total_up: null, net_total_down: null, traffic_up: null, traffic_down: null,
-      process: null, connections: null, connections_udp: null,
+      ram: metricValue(row.mem_used),
+      ram_total: nodeInfo.value?.mem_total ?? null,
+      swap: null,
+      swap_total: nodeInfo.value?.swap_total ?? null,
+      load: null,
+      temp: null,
+      disk: metricValue(row.disk_used),
+      disk_total: nodeInfo.value?.disk_total ?? null,
+      disk_read_bps: metricValue(row.disk_read_bps),
+      disk_write_bps: metricValue(row.disk_write_bps),
+      disk_read_iops: metricValue(row.disk_read_iops),
+      disk_write_iops: metricValue(row.disk_write_iops),
+      disk_await_ms: metricValue(row.disk_await_ms),
+      disk_util: metricValue(row.disk_util),
+      net_in: metricValue(row.net_rx),
+      net_out: metricValue(row.net_tx),
+      net_total_up: null,
+      net_total_down: null,
+      traffic_up: null,
+      traffic_down: null,
+      process: null,
+      connections: null,
+      connections_udp: null,
     }
   }).sort((a, b) => dayjs(a.time).valueOf() - dayjs(b.time).valueOf())
 }
