@@ -737,22 +737,26 @@ async function fetchHistoryData() {
     return
 
   if (isCfServer(props.uuid)) {
-    if (isCustomRange.value) {
+    const requestedUuid = props.uuid
+    const range = isCustomRange.value ? customRange.value : null
+    const hours = range ? maxRecordPreserveTime.value : effectiveHistoryHours.value
+    if (range && range.start.isBefore(dayjs().subtract(maxRecordPreserveTime.value, 'hour'))) {
       metricData.value = null
       remoteData.value = []
       rawMetricSeries.value = []
-      error.value = 'CFSM 历史接口暂不支持自定义起止时间，请选择预设时间范围'
+      error.value = `所选时间段超出 CFSM 当前可查询的 ${maxRecordPreserveTime.value} 小时历史范围`
       return
     }
-    const requestedUuid = props.uuid
-    const hours = effectiveHistoryHours.value
     loading.value = true
     error.value = null
     try {
       const history = await fetchNodeHistory(requestedUuid, { hours, series: 'metrics' })
       if (props.uuid !== requestedUuid)
         return
-      metricData.value = cfHistoryToRecordFormat(history.metrics)
+      const rows = range
+        ? history.metrics.filter(row => row.ts * 1000 >= range.start.valueOf() && row.ts * 1000 <= range.end.valueOf())
+        : history.metrics
+      metricData.value = cfHistoryToRecordFormat(rows)
       remoteData.value = []
       rawMetricSeries.value = []
     }
