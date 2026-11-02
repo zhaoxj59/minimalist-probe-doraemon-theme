@@ -148,9 +148,17 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
 
 export const THEME_SHORT = manifest.short
 
+let cfWsTimeoutMinutes = 0
+
+export function getFrontendWsTimeoutMinutes(): number {
+  return cfWsTimeoutMinutes
+}
+
 export async function fetchMe(signal?: AbortSignal): Promise<HubMe> {
-  const config = await getJson<{ site_title?: string, is_public?: boolean }>('/api/config', signal)
+  const config = await getJson<{ site_title?: string, is_public?: boolean, frontend_ws_timeout_minutes?: number }>('/api/config', signal)
   // CFSM 的 authorization 是站点功能开关，不代表当前访客已登录。
+  const timeout = Number(config.frontend_ws_timeout_minutes)
+  cfWsTimeoutMinutes = Number.isFinite(timeout) ? Math.min(1440, Math.max(0, timeout)) : 0
   return { authed: false, site_name: config.site_title || 'CF-Server-Monitor', public_page: config.is_public !== false }
 }
 
