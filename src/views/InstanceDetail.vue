@@ -172,6 +172,7 @@ watch(() => String(route.params.id ?? ''), (id, _previous, onCleanup) => {
           wsTimeoutTimer = null
         }
         if (event.reason === 'cfsm-timeout') {
+          // eslint-disable-next-line no-alert -- Ask before reconnecting after the configured live-session timeout.
           if (window.confirm('实时连接已达到站点设定的时长。是否继续保持实时连接？'))
             connect()
           return
@@ -459,7 +460,6 @@ function getDetailMetricCard(key: DetailMetricCardKey): MetricCard {
       return { key, label: '竹蜻蜓转速 · CPU', value: (node?.cpu ?? 0).toFixed(1), unit: '%', icon: 'tabler:propeller' }
     case 'gpuUsage': {
       const gpuUsage = node?.gpu
-      const hasGpu = Boolean(node?.gpu_name?.trim()) || (typeof gpuUsage === 'number' && Number.isFinite(gpuUsage))
       const hasGpuUsage = typeof gpuUsage === 'number' && Number.isFinite(gpuUsage)
       return { key, label: 'GPU 使用率', value: hasGpuUsage ? gpuUsage.toFixed(1) : '-', unit: hasGpuUsage ? '%' : undefined, icon: 'tabler:device-desktop-analytics', tooltip: node?.gpu_name?.trim() || undefined }
     }
