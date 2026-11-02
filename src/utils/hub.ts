@@ -298,7 +298,7 @@ function buildCurrentPingHistory(raw: Record<string, any>, sysConfig: Record<str
 }
 
 /** 将 CFSM 单台服务器响应转换为主题内部节点结构。 */
-function mapCfServer(raw: Record<string, any>): HubNode {
+function mapCfServer(raw: Record<string, any>, realtimeUpdate?: Record<string, any>): HubNode {
   const id = String(raw.id)
   const num = (v: unknown) => {
     const n = typeof v === 'string' ? Number(v) : v
@@ -337,15 +337,20 @@ function mapCfServer(raw: Record<string, any>): HubNode {
     : num(rawLastUpdated)
   const lastUpdated = Number.isFinite(lastUpdatedValue) ? lastUpdatedValue : 0
 
-  // CFSM 的全局在线统计以最新指标上报时间为准；部分响应中的 is_online 可能是旧值。
-  // 只要存在 last_updated，就优先按最近 5 分钟是否有上报判断，避免旧的 false 覆盖新上报。
+  // CFSM /api/servers 同时返回 latestReportUpdates：它来自 Worker / Durable Object
+  // 的实时上报缓存，比 D1 中的 last_updated 更及时。优先使用 reportAgeMs；
+  // 缓存没有该节点时，再按 D1 最新指标时间判断。不要使用配置创建时间 timestamp。
+  const reportAgeMs = Number(realtimeUpdate?.reportAgeMs)
+  const hasRealtimeAge = Number.isFinite(reportAgeMs) && reportAgeMs >= 0
   const onlineValue = raw.is_online ?? raw.online
   const hasExplicitOnline = onlineValue !== undefined && onlineValue !== null
   const hasLastUpdated = lastUpdated > 0
   const lastUpdatedMs = lastUpdated > 1e12 ? lastUpdated : lastUpdated * 1000
-  const online = hasLastUpdated
-    ? Date.now() - lastUpdatedMs < 300000
-    : hasExplicitOnline && (onlineValue === true || onlineValue === 1 || onlineValue === '1')
+  const online = hasRealtimeAge
+    ? reportAgeMs < 300000
+    : hasLastUpdated
+      ? Date.now() - lastUpdatedMs < 300000
+      : hasExplicitOnline && (onlineValue === true || onlineValue === 1 || onlineValue === '1')
   const load = Array.isArray(raw.load_avg)
     ? raw.load_avg.map(Number).filter(Number.isFinite)
     : typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(LOAD_AVG_SPLIT_REGEX).map(Number).filter(Number.isFinite) : []
@@ -422,7 +427,9 @@ export async function fetchNodeDetail(id: string | number, signal?: AbortSignal)
     throw new HubError(502, 'Invalid server detail response')
   const sysConfig = response.sysConfig && typeof response.sysConfig === 'object' ? response.sysConfig : {}
   cfSysConfig = sysConfig
-  const node = mapCfServer(raw)
+  const latestReportUpdates = Array.isArray(response.latestReportUpdates) ? response.latestReportUpdates : []
+  const realtimeUpdate = latestReportUpdates.find((item: Record<string, any>) => String(item.serverId) === String(raw.id))
+  const node = mapCfServer(raw, realtimeUpdate)
   if (!cfServerIds.includes(String(node.id)))
     cfServerIds.push(String(node.id))
   const history = buildCurrentPingHistory(raw, sysConfig)
@@ -438,7 +445,15 @@ export async function fetchNodes(signal?: AbortSignal): Promise<HubSnapshot> {
   const data = await getJson<{ servers?: Array<Record<string, any>>, sysConfig?: Record<string, any> }>('/api/servers', signal)
   const sysConfig = data.sysConfig && typeof data.sysConfig === 'object' ? data.sysConfig : {}
   cfSysConfig = sysConfig
-  const nodes: HubNode[] = (Array.isArray(data.servers) ? data.servers : []).map(mapCfServer)
+  const latestReportUpdates = Array.isArray(data.latestReportUpdates) ? data.latestReportUpdates : []
+  const realtimeUpdates = new Map<string, Record<string, any>>(
+    latestReportUpdates
+      .filter((item: Record<string, any>) => item && item.serverId != null)
+      .map((item: Record<string, any>) => [String(item.serverId), item]),
+  )
+  const nodes: HubNode[] = (Array.isArray(data.servers) ? data.servers : []).map(
+    raw => mapCfServer(raw, realtimeUpdates.get(String(raw.id))),
+  )
   cfServerIds = nodes.map(node => String(node.id))
   cfPingHistory.clear()
   for (const raw of Array.isArray(data.servers) ? data.servers : []) {
