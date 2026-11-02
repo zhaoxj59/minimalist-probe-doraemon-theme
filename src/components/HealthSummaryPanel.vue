@@ -11,6 +11,7 @@ import { LOAD_RECORD_MAX_COUNT, PING_RECORD_MAX_COUNT } from '@/constants/load'
 import { loadLoadRecords, loadPingRecords } from '@/services/history.service'
 import { analyzeDiskPrediction } from '@/services/prediction.service'
 import { useAppStore } from '@/stores/app'
+import { isCfServer } from '@/utils/hub'
 import { formatBytesPerSecondWithConfig, formatBytesWithConfig } from '@/utils/helper'
 import { getTrafficUsed, getTrafficUsedPercentage, hasTrafficLimit } from '@/utils/nodeMetricsHelper'
 
@@ -24,6 +25,7 @@ interface NodeHealthSummary {
   uuid: string
   name: string
   online: boolean
+  metricsAvailable: boolean
   cpuPeak: number
   memoryPeak: number
   loadPeak: number
@@ -94,33 +96,45 @@ function formatSpeed(bytes: number): string {
 }
 
 function getMemoryPeak(records: StatusRecord[], fallbackTotal: number): number {
-  let peak = 0
+  let peak = Number.NaN
   for (const record of records) {
-    const total = record.ram_total || fallbackTotal || 1
-    peak = Math.max(peak, (record.ram || 0) / total * 100)
+    const total = Number.isFinite(record.ram_total) && record.ram_total > 0 ? record.ram_total : fallbackTotal
+    if (!Number.isFinite(record.ram) || !Number.isFinite(total) || total <= 0)
+      continue
+    const value = record.ram / total * 100
+    peak = Number.isFinite(peak) ? Math.max(peak, value) : value
   }
   return peak
 }
 
 function getCpuPeak(records: StatusRecord[], fallback: number): number {
-  let peak = fallback || 0
-  for (const record of records)
-    peak = Math.max(peak, record.cpu || 0)
+  let peak = Number.isFinite(fallback) ? fallback : Number.NaN
+  for (const record of records) {
+    if (Number.isFinite(record.cpu))
+      peak = Number.isFinite(peak) ? Math.max(peak, record.cpu) : record.cpu
+  }
   return peak
 }
 
 function getLoadPeak(records: StatusRecord[], fallback: number): number {
-  let peak = fallback || 0
-  for (const record of records)
-    peak = Math.max(peak, record.load || 0)
+  let peak = Number.isFinite(fallback) ? fallback : Number.NaN
+  for (const record of records) {
+    if (Number.isFinite(record.load))
+      peak = Number.isFinite(peak) ? Math.max(peak, record.load) : record.load
+  }
   return peak
 }
 
 function getDiskUsagePeak(records: StatusRecord[], fallbackUsed: number, fallbackTotal: number): number {
-  let peak = fallbackTotal > 0 ? fallbackUsed / fallbackTotal * 100 : 0
+  let peak = Number.isFinite(fallbackUsed) && Number.isFinite(fallbackTotal) && fallbackTotal > 0
+    ? fallbackUsed / fallbackTotal * 100
+    : Number.NaN
   for (const record of records) {
-    const total = record.disk_total || fallbackTotal || 1
-    peak = Math.max(peak, (record.disk || 0) / total * 100)
+    const total = Number.isFinite(record.disk_total) && record.disk_total > 0 ? record.disk_total : fallbackTotal
+    if (!Number.isFinite(record.disk) || !Number.isFinite(total) || total <= 0)
+      continue
+    const value = record.disk / total * 100
+    peak = Number.isFinite(peak) ? Math.max(peak, value) : value
   }
   return peak
 }
@@ -199,25 +213,25 @@ function buildCurrentLoadRecordsByClient(): Map<string, StatusRecord[]> {
     map.set(node.uuid, [{
       client: node.uuid,
       time: now,
-      cpu: node.cpu || 0,
-      gpu: node.gpu || 0,
-      ram: node.ram || 0,
+      cpu: node.message === 'unavailable' || !Number.isFinite(node.cpu) ? Number.NaN : node.cpu,
+      gpu: node.message === 'unavailable' || !Number.isFinite(node.gpu) ? Number.NaN : node.gpu,
+      ram: node.message === 'unavailable' || !Number.isFinite(node.ram) ? Number.NaN : node.ram,
       ram_total: node.mem_total || 0,
-      swap: node.swap || 0,
+      swap: node.message === 'unavailable' || !Number.isFinite(node.swap) ? Number.NaN : node.swap,
       swap_total: node.swap_total || 0,
-      load: node.load || 0,
-      load5: node.load5 || 0,
-      load15: node.load15 || 0,
-      temp: node.temp || 0,
-      disk: node.disk || 0,
+      load: node.message === 'unavailable' || !Number.isFinite(node.load) ? Number.NaN : node.load,
+      load5: node.message === 'unavailable' || !Number.isFinite(node.load5) ? Number.NaN : node.load5,
+      load15: node.message === 'unavailable' || !Number.isFinite(node.load15) ? Number.NaN : node.load15,
+      temp: node.message === 'unavailable' || !Number.isFinite(node.temp) ? Number.NaN : node.temp,
+      disk: node.message === 'unavailable' || !Number.isFinite(node.disk) ? Number.NaN : node.disk,
       disk_total: node.disk_total || 0,
-      net_in: node.net_in || 0,
-      net_out: node.net_out || 0,
-      net_total_up: node.net_total_up || 0,
-      net_total_down: node.net_total_down || 0,
-      process: node.process || 0,
-      connections: node.connections || 0,
-      connections_udp: node.connections_udp || 0,
+      net_in: node.message === 'unavailable' || !Number.isFinite(node.net_in) ? Number.NaN : node.net_in,
+      net_out: node.message === 'unavailable' || !Number.isFinite(node.net_out) ? Number.NaN : node.net_out,
+      net_total_up: node.message === 'unavailable' || !Number.isFinite(node.net_total_up) ? Number.NaN : node.net_total_up,
+      net_total_down: node.message === 'unavailable' || !Number.isFinite(node.net_total_down) ? Number.NaN : node.net_total_down,
+      process: node.message === 'unavailable' || !Number.isFinite(node.process) ? Number.NaN : node.process,
+      connections: node.message === 'unavailable' || !Number.isFinite(node.connections) ? Number.NaN : node.connections,
+      connections_udp: node.message === 'unavailable' || !Number.isFinite(node.connections_udp) ? Number.NaN : node.connections_udp,
     }])
   }
   return map
@@ -242,17 +256,22 @@ function buildNodeSummary(node: NodeData, recordsByClient: Map<string, StatusRec
   const diskPredictionState = analyzeDiskPrediction(records, node.disk_total)
   const diskPrediction = diskPredictionState.prediction
 
+  const metricsAvailable = records.some(record => Number.isFinite(record.cpu)
+    || (Number.isFinite(record.ram) && Number.isFinite(record.ram_total) && record.ram_total > 0)
+    || (Number.isFinite(record.disk) && Number.isFinite(record.disk_total) && record.disk_total > 0))
+
   return {
     uuid: node.uuid,
     name: node.name,
     online: node.online,
-    cpuPeak: getCpuPeak(records, node.cpu || 0),
+    metricsAvailable,
+    cpuPeak: getCpuPeak(records, node.message === 'unavailable' ? Number.NaN : node.cpu),
     memoryPeak: getMemoryPeak(records, node.mem_total),
-    loadPeak: getLoadPeak(records, node.load || 0),
+    loadPeak: getLoadPeak(records, node.message === 'unavailable' ? Number.NaN : node.load),
     trafficUsedPercentage: getTrafficUsedPercentage(node),
     trafficUsedBytes: getTrafficUsed(node),
     trafficLimitBytes: node.traffic_limit || 0,
-    diskUsagePercentage: getDiskUsagePeak(records, node.disk || 0, node.disk_total || 0),
+    diskUsagePercentage: getDiskUsagePeak(records, node.message === 'unavailable' ? Number.NaN : node.disk, node.disk_total || 0),
     diskPredictionDays: diskPrediction ? diskPrediction.daysUntilFull : null,
     diskDailyGrowthBytes: diskPrediction?.dailyGrowthBytes ?? 0,
     avgLatency: pingStats.avgLatency,
@@ -294,9 +313,14 @@ async function generateSummary(): Promise<void> {
       return
 
     summaries.value = props.nodes.map(node => buildNodeSummary(node, recordsByClient, pingRecordsByClient))
-    historyNote.value = recordsByClient === realtimeRecordsByClient
+    const cfsmNodeCount = props.nodes.filter(node => isCfServer(node.uuid)).length
+    const metricNote = recordsByClient === realtimeRecordsByClient
       ? '历史负载拉取失败，当前结果使用实时数据兜底。'
-      : `历史样本最多读取 ${HEALTH_LOAD_MAX_COUNT.toLocaleString('zh-CN')} 条，保证生成速度。`
+      : `历史性能样本最多读取 ${HEALTH_LOAD_MAX_COUNT.toLocaleString('zh-CN')} 条。`
+    const pingNote = cfsmNodeCount > 0
+      ? `CFSM 节点 Ping 仅使用列表接口近期窗口（最多约 20 个采样点），不代表所选周期的完整 Ping 历史；涉及 CFSM 的节点数：${cfsmNodeCount}。`
+      : ''
+    historyNote.value = [metricNote, pingNote].filter(Boolean).join(' ')
   }
   catch (err) {
     if (requestId !== summaryRequestId)
@@ -312,10 +336,10 @@ async function generateSummary(): Promise<void> {
 }
 
 const offlineNodes = computed(() => props.nodes.filter(node => !node.online))
-const cpuRankNodes = computed(() => [...summaries.value].sort((a, b) => b.cpuPeak - a.cpuPeak).slice(0, HEALTH_LIST_LIMIT))
-const memoryRankNodes = computed(() => [...summaries.value].sort((a, b) => b.memoryPeak - a.memoryPeak).slice(0, HEALTH_LIST_LIMIT))
+const cpuRankNodes = computed(() => summaries.value.filter(item => Number.isFinite(item.cpuPeak)).sort((a, b) => b.cpuPeak - a.cpuPeak).slice(0, HEALTH_LIST_LIMIT))
+const memoryRankNodes = computed(() => summaries.value.filter(item => Number.isFinite(item.memoryPeak)).sort((a, b) => b.memoryPeak - a.memoryPeak).slice(0, HEALTH_LIST_LIMIT))
 const diskGrowthRankNodes = computed(() => summaries.value.filter(item => item.diskDailyGrowthBytes > 0).sort((a, b) => b.diskDailyGrowthBytes - a.diskDailyGrowthBytes).slice(0, HEALTH_LIST_LIMIT))
-const diskUsageRankNodes = computed(() => summaries.value.filter(item => item.diskUsagePercentage > 0).sort((a, b) => b.diskUsagePercentage - a.diskUsagePercentage).slice(0, HEALTH_LIST_LIMIT))
+const diskUsageRankNodes = computed(() => summaries.value.filter(item => Number.isFinite(item.diskUsagePercentage) && item.diskUsagePercentage > 0).sort((a, b) => b.diskUsagePercentage - a.diskUsagePercentage).slice(0, HEALTH_LIST_LIMIT))
 const diskRankMode = computed<'growth' | 'usage'>(() => diskGrowthRankNodes.value.length ? 'growth' : 'usage')
 const diskRankNodes = computed(() => diskRankMode.value === 'growth' ? diskGrowthRankNodes.value : diskUsageRankNodes.value)
 const diskFullSoon = computed(() => summaries.value.filter(item => item.diskPredictionDays !== null && item.diskPredictionDays <= appStore.diskPredictionThresholdDays).sort((a, b) => (a.diskPredictionDays ?? Infinity) - (b.diskPredictionDays ?? Infinity)))
@@ -339,17 +363,17 @@ const riskRankNodes = computed<NodeRiskSummary[]>(() => summaries.value.map((nod
   const loadThreshold = appStore.homeHighLoadThreshold
   const trafficThreshold = appStore.homeTrafficWarningThreshold
 
-  const cpuRisk = thresholdRisk(node.cpuPeak, loadThreshold, 25)
+  const cpuRisk = Number.isFinite(node.cpuPeak) ? thresholdRisk(node.cpuPeak, loadThreshold, 25) : 0
   if (cpuRisk > 0) {
     score += cpuRisk
     reasons.push(`CPU ${node.cpuPeak.toFixed(0)}%`)
   }
-  const memoryRisk = thresholdRisk(node.memoryPeak, loadThreshold, 20)
+  const memoryRisk = Number.isFinite(node.memoryPeak) ? thresholdRisk(node.memoryPeak, loadThreshold, 20) : 0
   if (memoryRisk > 0) {
     score += memoryRisk
     reasons.push(`内存 ${node.memoryPeak.toFixed(0)}%`)
   }
-  const diskRisk = thresholdRisk(node.diskUsagePercentage, loadThreshold, 15)
+  const diskRisk = Number.isFinite(node.diskUsagePercentage) ? thresholdRisk(node.diskUsagePercentage, loadThreshold, 15) : 0
   if (diskRisk > 0) {
     score += diskRisk
     reasons.push(`磁盘 ${node.diskUsagePercentage.toFixed(0)}%`)
