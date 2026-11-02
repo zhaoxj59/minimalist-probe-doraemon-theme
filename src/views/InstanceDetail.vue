@@ -15,9 +15,9 @@ import { LOAD_RECORD_MAX_COUNT } from '@/constants/load'
 import { loadNodeLoadRecords } from '@/services/history.service'
 import { useAppStore } from '@/stores/app'
 import { useNodesStore } from '@/stores/nodes'
+import { formatCityNameZh } from '@/utils/cityNameHelper'
 import { fetchNodeDetail, getFrontendWsTimeoutMinutes, isCfServer, openNodeLiveSocket } from '@/utils/hub'
 import { snapshotToMaps } from '@/utils/rpc'
-import { formatCityNameZh } from '@/utils/cityNameHelper'
 import { getCpuBenchmarkRating, getPassMarkCpuLookupUrl } from '@/utils/cpuBenchmark'
 import * as financeHelper from '@/utils/financeHelper'
 import { formatBytesPerSecondWithConfig, formatBytesWithConfig, formatUptimeWithFormat } from '@/utils/helper'
@@ -115,9 +115,12 @@ watch(() => String(route.params.id ?? ''), (id, _previous, onCleanup) => {
   let controller: AbortController | null = null
 
   const clearTimers = () => {
-    if (refreshTimer) clearTimeout(refreshTimer)
-    if (wsTimeoutTimer) clearTimeout(wsTimeoutTimer)
-    if (reconnectTimer) clearTimeout(reconnectTimer)
+    if (refreshTimer)
+      clearTimeout(refreshTimer)
+    if (wsTimeoutTimer)
+      clearTimeout(wsTimeoutTimer)
+    if (reconnectTimer)
+      clearTimeout(reconnectTimer)
     refreshTimer = null
     wsTimeoutTimer = null
     reconnectTimer = null
