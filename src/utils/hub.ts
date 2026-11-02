@@ -46,7 +46,7 @@ export interface HubMetrics {
 }
 
 export interface HubNode {
-  id: number
+  id: string | number
   name: string
   country?: string
   group?: string
@@ -149,16 +149,56 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
 
 export const THEME_SHORT = manifest.short
 
-export function fetchMe(signal?: AbortSignal): Promise<HubMe> {
-  return getJson<HubMe>('/api/me', signal)
+export async function fetchMe(signal?: AbortSignal): Promise<HubMe> {
+  const config = await getJson<{ site_title?: string, is_public?: boolean }>('/api/config', signal)
+  // CFSM 的 authorization 是站点功能开关，不代表当前访客已登录。
+  return { authed: false, site_name: config.site_title || 'CF-Server-Monitor', public_page: config.is_public !== false }
 }
 
+let cfServerIds: string[] = []
+
 export async function fetchNodes(signal?: AbortSignal): Promise<HubSnapshot> {
-  const data = await getJson<HubSnapshot | HubNode[]>('/api/nodes', signal)
-  // 防御性兼容：直接返回数组的实现
-  if (Array.isArray(data))
-    return { nodes: data }
-  return { nodes: Array.isArray(data?.nodes) ? data.nodes : [], admin: data?.admin }
+  const data = await getJson<{ servers?: Array<Record<string, any>> }>('/api/servers', signal)
+  const nodes: HubNode[] = (Array.isArray(data.servers) ? data.servers : []).map((raw) => {
+    const id = String(raw.id)
+    const num = (v: unknown) => {
+      const n = typeof v === 'string' ? Number(v) : v
+      return typeof n === 'number' && Number.isFinite(n) ? n : 0
+    }
+    const text = (v: unknown) => typeof v === 'string' ? v : ''
+    const online = raw.is_online === true || raw.is_online === 1 || raw.is_online === '1'
+    const timestamp = num(raw.last_updated) || num(raw.timestamp) || Date.now()
+    const load = typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(/[ ,]+/).map(Number).filter(Number.isFinite) : []
+    const trafficText = text(raw.traffic_limit)
+    const match = trafficText.match(/^([\\d.]+)\\s*(B|KB|MB|GB|TB)$/i)
+    const trafficLimit = match
+      ? Number(match[1]) * ({ B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }[match[2].toUpperCase() as 'B' | 'KB' | 'MB' | 'GB' | 'TB'])
+      : num(raw.traffic_limit)
+    return {
+      id, name: text(raw.name) || id, country: text(raw.region), group: text(raw.server_group),
+      sort: num(raw.sort_order), public: !(raw.is_hidden === true || raw.is_hidden === 1 || raw.is_hidden === '1'),
+      online, last_seen: timestamp > 1e12 ? timestamp / 1000 : timestamp,
+      os: text(raw.os), kernel: text(raw.kernel_version), arch: text(raw.arch), cpu_name: text(raw.cpu_info),
+      cpu_cores: num(raw.cpu_cores), mem_total: num(raw.ram_total), swap_total: num(raw.swap_total),
+      disk_total: num(raw.disk_total), agent_version: text(raw.agent_version), price: num(raw.price),
+      currency: text(raw.currency), billing_cycle: text(raw.billing_cycle), expires_at: text(raw.expire_date) || null,
+      traffic_limit: trafficLimit, traffic_mode: text(raw.traffic_calc_type) || 'sum',
+      traffic_reset_day: num(raw.reset_day), total_rx: num(raw.net_rx), total_tx: num(raw.net_tx),
+      month_rx: num(raw.net_rx_monthly), month_tx: num(raw.net_tx_monthly),
+      ipv4: text(raw.ip_v4) && text(raw.ip_v4) !== '0' ? text(raw.ip_v4) : '',
+      ipv6: text(raw.ip_v6) && text(raw.ip_v6) !== '0' ? text(raw.ip_v6) : '',
+      metrics: {
+        cpu: num(raw.cpu), load, mem_total: num(raw.ram_total), mem_used: num(raw.ram_used),
+        swap_total: num(raw.swap_total), swap_used: num(raw.swap_used), disk_total: num(raw.disk_total),
+        disk_used: num(raw.disk_used), net_rx: num(raw.net_in_speed), net_tx: num(raw.net_out_speed),
+        tcp: num(raw.tcp_conn), udp: num(raw.udp_conn), procs: num(raw.processes),
+        total_rx: num(raw.net_rx), total_tx: num(raw.net_tx),
+        month_rx: num(raw.net_rx_monthly), month_tx: num(raw.net_tx_monthly),
+      },
+    }
+  })
+  cfServerIds = nodes.map(node => String(node.id))
+  return { nodes }
 }
 
 // ---- 主题设置 ----
@@ -199,15 +239,12 @@ function fits(field: ConfigField, value: unknown): boolean {
 export async function loadThemeConfig(): Promise<Record<string, unknown>> {
   let saved: Record<string, unknown> = {}
   try {
-    const res = await fetch(`/api/themes/${THEME_SHORT}/config`, { credentials: 'same-origin' })
-    if (res.ok) {
-      const body = await res.json()
-      if (body && typeof body === 'object' && !Array.isArray(body))
-        saved = body as Record<string, unknown>
-    }
+    const body = await getJson<{ theme_options?: Record<string, unknown> }>('/api/config')
+    if (body.theme_options && typeof body.theme_options === 'object')
+      saved = body.theme_options
   }
   catch {
-    // 断网同样按默认值
+    // 配置接口不可用时仍使用主题默认值
   }
   return Object.fromEntries(configFields.map(field => [field.key, fits(field, saved[field.key]) ? saved[field.key] : field.default]))
 }
@@ -274,46 +311,25 @@ const historyCache = new Map<string, { at: number, promise: Promise<HubHistory> 
 const HISTORY_CACHE_MS = 15_000
 
 export function fetchNodeHistory(id: string | number, query: HistoryQuery, signal?: AbortSignal): Promise<HubHistory> {
-  const hours = Math.max(1, Math.floor(query.hours))
-  const points = query.points ? Math.min(1440, Math.max(60, Math.floor(query.points))) : undefined
-  const params = new URLSearchParams({ hours: String(hours) })
-  if (points)
-    params.set('points', String(points))
-  if (query.series)
-    params.set('series', query.series)
-  const url = `/api/nodes/${encodeURIComponent(String(id))}/metrics?${params}`
-
-  // 同一窗口的请求在短时间内合并，避免卡片、详情页和统计各自重复查询
+  const hours = Math.min(168, Math.max(1, Math.floor(query.hours)))
+  const url = `/api/history/all?id=${encodeURIComponent(String(id))}&hours=${hours}`
   const cached = historyCache.get(url)
   if (cached && Date.now() - cached.at < HISTORY_CACHE_MS)
     return cached.promise
-
   const promise = (async () => {
-    for (let attempt = 0; ; attempt++) {
-      await acquireHistorySlot(signal)
-      let res: Response
-      try {
-        res = await fetch(url, { credentials: 'same-origin', signal, headers: { accept: 'application/json' } })
-      }
-      finally {
-        releaseHistorySlot()
-      }
-      if (res.status === 503 && attempt < HISTORY_RETRIES) {
-        await sleep(400 * 2 ** attempt + Math.random() * 300, signal)
-        continue
-      }
-      if (!res.ok)
-        throw await readError(res)
-      const body = await res.json() as Partial<HubHistory>
-      return {
-        metrics: Array.isArray(body.metrics) ? body.metrics : [],
-        ping: Array.isArray(body.ping) ? body.ping : [],
-        probes: body.probes && typeof body.probes === 'object' ? body.probes : {},
-        loss: body.loss && typeof body.loss === 'object' ? body.loss : {},
-      } satisfies HubHistory
+    const rows = await getJson<Array<Record<string, any>>>(url, signal)
+    const num = (v: unknown) => {
+      const n = typeof v === 'string' ? Number(v) : v
+      return typeof n === 'number' && Number.isFinite(n) ? n : Number.NaN
     }
+    const metrics = (Array.isArray(rows) ? rows : []).map(row => ({
+      ts: num(row.timestamp) > 1e12 ? num(row.timestamp) / 1000 : num(row.timestamp),
+      cpu: num(row.cpu), mem_used: num(row.ram_used), disk_used: num(row.disk_used),
+      net_rx: num(row.net_rx), net_tx: num(row.net_tx),
+    })).filter(row => Number.isFinite(row.ts) && row.ts > 0)
+    // CFSM 的此接口提供性能历史；没有提供历史探测曲线时不伪造 ping 数据。
+    return { metrics, ping: [], probes: {}, loss: {} } satisfies HubHistory
   })()
-
   historyCache.set(url, { at: Date.now(), promise })
   promise.catch(() => {
     if (historyCache.get(url)?.promise === promise)
@@ -557,18 +573,21 @@ export interface LiveSocketHandlers {
 /** 订阅 /api/ws：hub 每 2 秒推送一次与 /api/nodes 相同的快照 */
 export function openLiveSocket(handlers: LiveSocketHandlers): WebSocket {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const socket = new WebSocket(`${protocol}//${location.host}/api/ws`)
-  socket.addEventListener('open', () => handlers.onOpen?.())
-  socket.addEventListener('message', (event) => {
+  const socket = new WebSocket(`${protocol}//${location.host}/api/ws?subscribe=all`)
+  socket.addEventListener('open', () => {
+    socket.send(JSON.stringify({ type: 'subscribe', scope: 'all', ids: cfServerIds }))
+    handlers.onOpen?.()
+  })
+  socket.addEventListener('message', async (event) => {
     if (typeof event.data !== 'string')
       return
     try {
-      const data = JSON.parse(event.data) as HubSnapshot
-      if (data && Array.isArray(data.nodes))
-        handlers.onSnapshot(data)
+      const data = JSON.parse(event.data)
+      if (data?.type === 'batchUpdate' || data?.type === 'update' || Array.isArray(data?.servers))
+        handlers.onSnapshot(await fetchNodes())
     }
     catch (error) {
-      console.warn('[hub] bad websocket frame', error)
+      console.warn('[CFSM] websocket frame error', error)
     }
   })
   socket.addEventListener('close', event => handlers.onClose?.(event))
