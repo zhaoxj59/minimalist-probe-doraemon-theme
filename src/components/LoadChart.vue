@@ -22,6 +22,7 @@ import { loadMetricDefinitions, loadPublicPingTasks, queryMetrics } from '@/serv
 import { useAppStore } from '@/stores/app'
 import { useNodesStore } from '@/stores/nodes'
 import { getChartSeriesPalette, getLoadChartPalette } from '@/utils/chartPalette'
+import { fetchNodeHistory, isCfServer } from '@/utils/hub'
 import { formatBytes, formatBytesSplit } from '@/utils/helper'
 import { comparePingTaskOrder, createPingTaskOrderMap, metricTags, normalizeMetricSeriesList } from '@/utils/metricSeries'
 import { fillMissingTimePoints } from '@/utils/recordHelper'
@@ -286,6 +287,37 @@ function gpuDetailsFromStatus(record: StatusRecord): RecordFormat['gpu_detailed'
     }
   })
   return details
+}
+
+function cfHistoryToRecordFormat(rows: Awaited<ReturnType<typeof fetchNodeHistory>>['metrics']): RecordFormat[] {
+  return rows.map((row) => {
+    const time = new Date(row.ts * 1000).toISOString()
+    return {
+      client: props.uuid,
+      time,
+      cpu: metricValue(row.cpu),
+      gpu: null,
+      gpu_usage: null,
+      gpu_memory: null,
+      ram: metricValue(row.mem_used),
+      ram_total: nodeInfo.value?.mem_total ?? null,
+      swap: null,
+      swap_total: nodeInfo.value?.swap_total ?? null,
+      load: null,
+      temp: null,
+      disk: metricValue(row.disk_used),
+      disk_total: nodeInfo.value?.disk_total ?? null,
+      net_in: metricValue(row.net_rx),
+      net_out: metricValue(row.net_tx),
+      net_total_up: null,
+      net_total_down: null,
+      traffic_up: null,
+      traffic_down: null,
+      process: null,
+      connections: null,
+      connections_udp: null,
+    }
+  }).sort((a, b) => dayjs(a.time).valueOf() - dayjs(b.time).valueOf())
 }
 
 function statusToRecordFormat(records: StatusRecord[]): RecordFormat[] {
@@ -575,6 +607,11 @@ async function loadMetricHistoryRecords(params: Pick<MetricQueryParams, 'hours' 
 }
 
 async function refreshRealtimeMetricSeries(force = false): Promise<void> {
+  if (isCfServer(props.uuid)) {
+    rawMetricSeries.value = []
+    return
+  }
+
   const cards = appStore.chartDashboardTemplate.cards
   if (!cards.includes('ping') && !cards.includes('pingLoss')) {
     rawMetricSeries.value = []
@@ -620,6 +657,35 @@ async function fetchRecentData() {
   if (!props.uuid)
     return
 
+  if (isCfServer(props.uuid)) {
+    const requestedUuid = props.uuid
+    if (isInitialLoad.value)
+      loading.value = true
+    error.value = null
+    try {
+      const history = await fetchNodeHistory(requestedUuid, { hours: 1, series: 'metrics' })
+      if (props.uuid !== requestedUuid)
+        return
+      metricData.value = cfHistoryToRecordFormat(history.metrics)
+      remoteData.value = []
+      rawMetricSeries.value = []
+    }
+    catch (err) {
+      if (props.uuid === requestedUuid) {
+        error.value = err instanceof Error ? err.message : '获取 CFSM 历史指标失败'
+        metricData.value = null
+        remoteData.value = []
+      }
+    }
+    finally {
+      if (props.uuid === requestedUuid) {
+        loading.value = false
+        isInitialLoad.value = false
+      }
+    }
+    return
+  }
+
   metricData.value = null
   void refreshRealtimeMetricSeries()
 
@@ -649,6 +715,34 @@ async function fetchRecentData() {
 async function fetchHistoryData() {
   if (!props.uuid)
     return
+
+  if (isCfServer(props.uuid)) {
+    const requestedUuid = props.uuid
+    const hours = effectiveHistoryHours.value
+    loading.value = true
+    error.value = null
+    try {
+      const history = await fetchNodeHistory(requestedUuid, { hours, series: 'metrics' })
+      if (props.uuid !== requestedUuid)
+        return
+      metricData.value = cfHistoryToRecordFormat(history.metrics)
+      remoteData.value = []
+      rawMetricSeries.value = []
+    }
+    catch (err) {
+      if (props.uuid === requestedUuid) {
+        error.value = err instanceof Error ? err.message : '获取 CFSM 历史指标失败'
+        metricData.value = null
+        remoteData.value = []
+        rawMetricSeries.value = []
+      }
+    }
+    finally {
+      if (props.uuid === requestedUuid)
+        loading.value = false
+    }
+    return
+  }
 
   if (isCustomRange.value && !customRange.value) {
     metricData.value = null
