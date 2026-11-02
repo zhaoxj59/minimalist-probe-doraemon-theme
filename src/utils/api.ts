@@ -7,7 +7,7 @@
 
 import { ADMIN_HISTORY_HOURS, fetchMe, HubError, loadThemeConfig, PUBLIC_HISTORY_HOURS } from '@/utils/hub'
 
-/** 登录状态。hub 只有一位站长，没有用户名 */
+/** CFSM 当前公开访问模式不代表访客已登录 */
 export interface MeInfo {
   logged_in: boolean
   username: string
