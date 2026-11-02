@@ -714,6 +714,29 @@ export interface LiveSocketHandlers {
   onClose?: (event: CloseEvent) => void
 }
 
+/** 详情页仅订阅当前服务器；收到增量推送后合并一次该节点 REST 快照。 */
+export function openNodeLiveSocket(id: string, onUpdate: () => void, onOpen?: () => void, onClose?: (event: CloseEvent) => void): WebSocket {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const socket = new WebSocket(`${protocol}//${location.host}/api/ws?subscribe=${encodeURIComponent(id)}`)
+  socket.addEventListener('open', () => onOpen?.())
+  socket.addEventListener('message', (event) => {
+    if (typeof event.data !== 'string')
+      return
+    try {
+      const message = JSON.parse(event.data)
+      if (message?.type !== 'batchUpdate' || !Array.isArray(message.updates))
+        return
+      if (message.updates.some((update: { serverId?: string }) => String(update.serverId) === id))
+        onUpdate()
+    }
+    catch (error) {
+      console.warn('[CFSM] detail websocket frame error', error)
+    }
+  })
+  socket.addEventListener('close', event => onClose?.(event))
+  return socket
+}
+
 /** 订阅 /api/ws：hub 每 2 秒推送一次与 /api/nodes 相同的快照 */
 export function openLiveSocket(handlers: LiveSocketHandlers): WebSocket {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
