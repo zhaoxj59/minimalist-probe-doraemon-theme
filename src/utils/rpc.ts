@@ -666,7 +666,7 @@ export class HubRpc {
           downsampled: true,
           count: rows.length,
           // hub 的桶丢包率是百分比整数，主题的 ping.loss 是 0-1 比例
-          points: rows.map(row => ({ time: new Date(row.ts * 1000).toISOString(), value: (row.loss ?? 0) / 100, count: 1 })),
+          points: rows.map(row => ({ time: new Date(row.ts * 1000).toISOString(), value: (row.loss ?? (row.latency === null ? 100 : 0)) / 100, count: 1 })),
         })
       }
     }
