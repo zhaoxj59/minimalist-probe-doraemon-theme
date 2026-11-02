@@ -40,6 +40,7 @@ interface GeneralMetricCard {
 
 interface OnlineStats {
   count: number
+  metricCount: number
   totalSpeed: { up: number, down: number }
   avgCpu: number
   totalGpu: number
@@ -213,6 +214,7 @@ function updateTopMetric(current: TopNodeMetric | null, node: NodeData, value: n
 const onlineStats = computed<OnlineStats>(() => {
   const stats: OnlineStats = {
     count: 0,
+    metricCount: 0,
     totalSpeed: { up: 0, down: 0 },
     avgCpu: 0,
     totalGpu: 0,
@@ -236,6 +238,10 @@ const onlineStats = computed<OnlineStats>(() => {
       continue
 
     stats.count += 1
+    if (node.message === 'unavailable')
+      continue
+
+    stats.metricCount += 1
     stats.totalSpeed.up += node.net_out || 0
     stats.totalSpeed.down += node.net_in || 0
     stats.avgCpu += node.cpu || 0
@@ -249,8 +255,8 @@ const onlineStats = computed<OnlineStats>(() => {
     stats.uploadPeakNode = updateTopMetric(stats.uploadPeakNode, node, node.net_out || 0)
     stats.downloadPeakNode = updateTopMetric(stats.downloadPeakNode, node, node.net_in || 0)
     stats.connectionPeakNode = updateTopMetric(stats.connectionPeakNode, node, getConnectionCount(node))
-    const hasGpu = Boolean(node.gpu_name?.trim()) || (node.gpu || 0) > 0
-    if (hasGpu) {
+    const hasGpuUsage = typeof node.gpu === 'number' && Number.isFinite(node.gpu)
+    if (hasGpuUsage) {
       stats.totalGpu += node.gpu || 0
       stats.gpuNodeCount += 1
       stats.gpuPeakNode = updateTopMetric(stats.gpuPeakNode, node, node.gpu || 0)
@@ -259,11 +265,17 @@ const onlineStats = computed<OnlineStats>(() => {
       stats.highLoadNodes.push(node)
   }
 
-  if (stats.count > 0) {
-    stats.avgCpu /= stats.count
-    stats.avgLoad /= stats.count
-    stats.avgLoad5 /= stats.count
-    stats.avgLoad15 /= stats.count
+  if (stats.metricCount > 0) {
+    stats.avgCpu /= stats.metricCount
+    stats.avgLoad /= stats.metricCount
+    stats.avgLoad5 /= stats.metricCount
+    stats.avgLoad15 /= stats.metricCount
+  }
+  else {
+    stats.avgCpu = Number.NaN
+    stats.avgLoad = Number.NaN
+    stats.avgLoad5 = Number.NaN
+    stats.avgLoad15 = Number.NaN
   }
 
   return stats
@@ -330,7 +342,7 @@ const avgGpu = computed(() => onlineStats.value.gpuNodeCount > 0
   ? onlineStats.value.totalGpu / onlineStats.value.gpuNodeCount
   : null)
 const gpuNodes = computed(() => summaryNodes.value.filter(node => Boolean(node.gpu_name?.trim()) || (node.gpu || 0) > 0))
-const onlineGpuNodes = computed(() => gpuNodes.value.filter(node => node.online))
+const onlineGpuNodes = computed(() => gpuNodes.value.filter(node => node.online && typeof node.gpu === 'number' && Number.isFinite(node.gpu)))
 const gpuPeakNode = computed(() => onlineStats.value.gpuPeakNode)
 const avgLoad = computed(() => onlineStats.value.avgLoad)
 const avgLoad5 = computed(() => onlineStats.value.avgLoad5)
@@ -474,6 +486,7 @@ function getCardDefinition(key: GeneralCardKey): GeneralMetricCard {
         icon: 'tabler:chevrons-up',
         value: formattedSpeedUp.value.value,
         unit: formattedSpeedUp.value.unit,
+        tooltip: `已计入 ${onlineStats.value.metricCount} / ${onlineNodeCount.value} 台有监控数据的在线服务器`,
       }
     case 'downloadSpeed':
       return {
@@ -482,6 +495,7 @@ function getCardDefinition(key: GeneralCardKey): GeneralMetricCard {
         icon: 'tabler:chevrons-down',
         value: formattedSpeedDown.value.value,
         unit: formattedSpeedDown.value.unit,
+        tooltip: `已计入 ${onlineStats.value.metricCount} / ${onlineNodeCount.value} 台有监控数据的在线服务器`,
       }
     case 'onlineNodes':
       return {
@@ -496,8 +510,9 @@ function getCardDefinition(key: GeneralCardKey): GeneralMetricCard {
         key: 'avgCpu',
         label: '竹蜻蜓转速 · 平均 CPU',
         icon: 'tabler:propeller',
-        value: formatDecimal(avgCpu.value),
-        unit: '%',
+        value: Number.isFinite(avgCpu.value) ? formatDecimal(avgCpu.value) : '-',
+        unit: Number.isFinite(avgCpu.value) ? '%' : undefined,
+        tooltip: `统计范围：${onlineStats.value.metricCount} / ${onlineNodeCount.value} 台有监控数据的在线服务器`,
       }
     case 'avgGpu':
       return {
@@ -513,8 +528,10 @@ function getCardDefinition(key: GeneralCardKey): GeneralMetricCard {
         key: 'avgLoad',
         label: '铜锣烧消耗指数 · 负载',
         icon: 'tabler:cookie',
-        value: formatDecimal(avgLoad.value, 2),
-        tooltip: `1m ${formatDecimal(avgLoad.value, 2)}\n5m ${formatDecimal(avgLoad5.value, 2)}\n15m ${formatDecimal(avgLoad15.value, 2)}`,
+        value: Number.isFinite(avgLoad.value) ? formatDecimal(avgLoad.value, 2) : '-',
+        tooltip: Number.isFinite(avgLoad.value)
+          ? `统计范围：${onlineStats.value.metricCount} / ${onlineNodeCount.value} 台有监控数据的在线服务器\n1m ${formatDecimal(avgLoad.value, 2)}\n5m ${formatDecimal(avgLoad5.value, 2)}\n15m ${formatDecimal(avgLoad15.value, 2)}`
+          : '暂无可用监控数据',
       }
     case 'swap':
       return {
