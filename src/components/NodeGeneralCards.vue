@@ -336,6 +336,7 @@ const formattedSwapUsed = computed(() => formatBytesSplit(totalSwap.value.used, 
 const formattedSwapTotal = computed(() => formatBytesSplit(totalSwap.value.total, appStore.byteDecimals))
 
 const onlineNodeCount = computed(() => onlineStats.value.count)
+const hasIncompleteOnlineMetrics = computed(() => onlineStats.value.metricCount < onlineNodeCount.value)
 const totalNodeCount = computed(() => summaryNodes.value.length)
 const avgCpu = computed(() => onlineStats.value.avgCpu)
 const avgGpu = computed(() => onlineStats.value.gpuNodeCount > 0
@@ -450,16 +451,18 @@ function getCardDefinition(key: GeneralCardKey): GeneralMetricCard {
         key: 'memory',
         label: '四次元口袋 · 内存',
         icon: 'mdi:pocket',
-        value: formattedMemoryUsed.value.value,
+        value: hasIncompleteOnlineMetrics.value ? '-' : formattedMemoryUsed.value.value,
         unit: `${formattedMemoryUsed.value.unit} / ${formattedMemoryTotal.value.value} ${formattedMemoryTotal.value.unit}`,
+        tooltip: hasIncompleteOnlineMetrics.value ? '部分在线服务器尚未上报监控数据，暂不汇总已用内存' : undefined,
       }
     case 'disk':
       return {
         key: 'disk',
         label: '百宝袋 · 磁盘',
         icon: 'mdi:treasure-chest',
-        value: formattedDiskUsed.value.value,
+        value: hasIncompleteOnlineMetrics.value ? '-' : formattedDiskUsed.value.value,
         unit: `${formattedDiskUsed.value.unit} / ${formattedDiskTotal.value.value} ${formattedDiskTotal.value.unit}`,
+        tooltip: hasIncompleteOnlineMetrics.value ? '部分在线服务器尚未上报监控数据，暂不汇总已用磁盘' : undefined,
       }
     case 'remainingValue':
       return {
@@ -538,23 +541,25 @@ function getCardDefinition(key: GeneralCardKey): GeneralMetricCard {
         key: 'swap',
         label: '备用口袋 · Swap',
         icon: 'icon-park-outline:switch',
-        value: formattedSwapUsed.value.value,
+        value: hasIncompleteOnlineMetrics.value ? '-' : formattedSwapUsed.value.value,
         unit: `${formattedSwapUsed.value.unit} / ${formattedSwapTotal.value.value} ${formattedSwapTotal.value.unit}`,
+        tooltip: hasIncompleteOnlineMetrics.value ? '部分在线服务器尚未上报监控数据，暂不汇总已用 Swap' : undefined,
       }
     case 'processes':
       return {
         key: 'processes',
         label: '进程总数',
         icon: 'tabler:list-numbers',
-        value: formatCount(totalProcesses.value),
+        value: hasIncompleteOnlineMetrics.value ? '-' : formatCount(totalProcesses.value),
+        tooltip: hasIncompleteOnlineMetrics.value ? '部分在线服务器尚未上报监控数据，当前总数不完整' : undefined,
       }
     case 'connections':
       return {
         key: 'connections',
         label: '连接数',
         icon: 'tabler:plug-connected',
-        value: formatCount(totalConnectionsTcp.value + totalConnectionsUdp.value),
-        tooltip: `TCP ${formatCount(totalConnectionsTcp.value)}\nUDP ${formatCount(totalConnectionsUdp.value)}`,
+        value: hasIncompleteOnlineMetrics.value ? '-' : formatCount(totalConnectionsTcp.value + totalConnectionsUdp.value),
+        tooltip: hasIncompleteOnlineMetrics.value ? '部分在线服务器尚未上报监控数据，当前总数不完整' : `TCP ${formatCount(totalConnectionsTcp.value)}\nUDP ${formatCount(totalConnectionsUdp.value)}`,
       }
     case 'cpuCores':
       return {
