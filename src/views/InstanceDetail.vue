@@ -2,7 +2,7 @@
 import type { DetailMetricCardKey } from '@/stores/app'
 import type { CurrencyCode } from '@/utils/financeHelper'
 import { Icon } from '@iconify/vue'
-import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,7 +15,7 @@ import { LOAD_RECORD_MAX_COUNT } from '@/constants/load'
 import { loadNodeLoadRecords } from '@/services/history.service'
 import { useAppStore } from '@/stores/app'
 import { useNodesStore } from '@/stores/nodes'
-import { fetchNodeDetail } from '@/utils/hub'
+import { fetchNodeDetail, getFrontendWsTimeoutMinutes, openNodeLiveSocket } from '@/utils/hub'
 import { snapshotToMaps } from '@/utils/rpc'
 import { formatCityNameZh } from '@/utils/cityNameHelper'
 import { getCpuBenchmarkRating, getPassMarkCpuLookupUrl } from '@/utils/cpuBenchmark'
@@ -97,23 +97,115 @@ onMounted(async () => {
   exchangeRates.value = rates
 })
 
-// 详情页独立读取单台服务器。这里仅 upsert 当前节点，绝不把单节点响应传给全量初始化方法。
-watch(() => String(route.params.id ?? ''), async (id, _previous, onCleanup) => {
+// 详情页独立读取单台服务器，并使用 serverId 专属 WebSocket。
+watch(() => String(route.params.id ?? ''), (id, _previous, onCleanup) => {
   if (!id)
     return
-  const controller = new AbortController()
-  onCleanup(() => controller.abort())
-  try {
-    const snapshot = await fetchNodeDetail(id, controller.signal)
-    const { clients, statuses } = snapshotToMaps(snapshot)
-    const client = clients[id]
-    if (client)
-      nodesStore.upsertSingleNode(client, statuses[id])
+
+  let disposed = false
+  let socket: WebSocket | null = null
+  let refreshTimer: ReturnType<typeof setTimeout> | null = null
+  let wsTimeoutTimer: ReturnType<typeof setTimeout> | null = null
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let controller: AbortController | null = null
+
+  const clearTimers = () => {
+    if (refreshTimer) clearTimeout(refreshTimer)
+    if (wsTimeoutTimer) clearTimeout(wsTimeoutTimer)
+    if (reconnectTimer) clearTimeout(reconnectTimer)
+    refreshTimer = null
+    wsTimeoutTimer = null
+    reconnectTimer = null
   }
-  catch (error) {
-    if (!(error instanceof DOMException && error.name === 'AbortError'))
-      console.warn('[CFSM] failed to load server detail', error)
+
+  const refreshNode = async () => {
+    controller?.abort()
+    const current = new AbortController()
+    controller = current
+    try {
+      const snapshot = await fetchNodeDetail(id, current.signal)
+      if (disposed || current.signal.aborted)
+        return
+      const { clients, statuses } = snapshotToMaps(snapshot)
+      const client = clients[id]
+      if (client)
+        nodesStore.upsertSingleNode(client, statuses[id])
+    }
+    catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError'))
+        console.warn('[CFSM] failed to load server detail', error)
+    }
   }
+
+  const connect = () => {
+    if (disposed || document.hidden || typeof WebSocket === 'undefined')
+      return
+    try {
+      socket = openNodeLiveSocket(id, () => {
+        if (refreshTimer)
+          clearTimeout(refreshTimer)
+        // 增量采样可能连续到达，合并短时间内的刷新，避免每个样本都请求 REST。
+        refreshTimer = setTimeout(() => {
+          refreshTimer = null
+          void refreshNode()
+        }, 800)
+      }, () => {
+        const minutes = getFrontendWsTimeoutMinutes()
+        if (minutes > 0) {
+          wsTimeoutTimer = setTimeout(() => {
+            wsTimeoutTimer = null
+            if (!disposed && socket?.readyState === WebSocket.OPEN)
+              socket.close(4000, 'cfsm-timeout')
+          }, minutes * 60_000)
+        }
+      }, (event) => {
+        if (disposed || document.hidden)
+          return
+        socket = null
+        if (wsTimeoutTimer) {
+          clearTimeout(wsTimeoutTimer)
+          wsTimeoutTimer = null
+        }
+        if (event.reason === 'cfsm-timeout') {
+          if (window.confirm('实时连接已达到站点设定的时长。是否继续保持实时连接？'))
+            connect()
+          return
+        }
+        // 非主动超时断开时有限重试；下一次仍只订阅当前节点。
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null
+          connect()
+        }, 5000)
+      })
+    }
+    catch (error) {
+      console.warn('[CFSM] failed to open detail websocket', error)
+    }
+  }
+
+  const handleVisibility = () => {
+    if (document.hidden) {
+      clearTimers()
+      const oldSocket = socket
+      socket = null
+      oldSocket?.close()
+      return
+    }
+    void refreshNode().then(connect)
+  }
+
+  document.addEventListener('visibilitychange', handleVisibility)
+  void refreshNode().then(connect)
+
+  onCleanup(() => {
+    disposed = true
+    document.removeEventListener('visibilitychange', handleVisibility)
+    clearTimers()
+    controller?.abort()
+    const oldSocket = socket
+    socket = null
+    oldSocket?.close()
+  })
 }, { immediate: true })
 
 // 当节点数据加载后尝试获取厂商信息
