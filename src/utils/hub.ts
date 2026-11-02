@@ -328,6 +328,9 @@ export async function fetchNodeDetail(id: string | number, signal?: AbortSignal)
   const history = buildCurrentPingHistory(raw, sysConfig)
   cfPingHistory.set(String(node.id), history)
   rememberProbes(history)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('cfsm:node-history-updated', { detail: { id: String(node.id) } }))
+  }
   return { nodes: [node] }
 }
 
