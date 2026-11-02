@@ -356,7 +356,7 @@ function hasRegion(region: string | null | undefined): boolean {
                 <Icon :icon="NODE_METRIC_ICONS.cpu" data-node-metric-icon="cpu" width="13" height="13" class="shrink-0 text-sky-500" aria-hidden="true" />
                 <span class="truncate" title="竹蜻蜓转速（CPU）">竹蜻蜓转速</span>
               </span>
-              <span class="tabular-nums font-medium">{{ hasStatusMetrics ? (props.node.cpu ?? 0).toFixed(1) + '%' : '-' }}</span>
+              <span class="tabular-nums font-medium">{{ hasStatusMetrics ? `${(props.node.cpu ?? 0).toFixed(1)}%` : '-' }}</span>
             </div>
             <ProgressThin :percentage="props.node.cpu ?? 0" :status="cpuStatus" :height="4" />
             <div class="text-[11px] text-muted-foreground truncate" title="铜锣烧消耗指数（1 / 5 / 15 分钟负载）">
@@ -371,7 +371,7 @@ function hasRegion(region: string | null | undefined): boolean {
                 <Icon :icon="NODE_METRIC_ICONS.memory" data-node-metric-icon="memory" width="13" height="13" class="shrink-0 text-emerald-500" aria-hidden="true" />
                 <span class="truncate" title="四次元口袋（内存）">四次元口袋</span>
               </span>
-              <span class="tabular-nums font-medium">{{ hasStatusMetrics ? memPercentage.toFixed(1) + '%' : '-' }}</span>
+              <span class="tabular-nums font-medium">{{ hasStatusMetrics ? `${memPercentage.toFixed(1)}%` : '-' }}</span>
             </div>
             <ProgressThin :percentage="memPercentage" :status="memStatus" :height="4" />
             <div class="text-[11px] text-muted-foreground truncate">
