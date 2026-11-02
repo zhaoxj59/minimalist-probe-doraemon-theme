@@ -497,7 +497,7 @@ const HISTORY_CACHE_MS = 15_000
 export function fetchNodeHistory(id: string | number, query: HistoryQuery, signal?: AbortSignal): Promise<HubHistory> {
   // CFSM 仅接受固定 hours 档位；请求较大档位后，再按调用方要求的窗口在本地裁剪。
   const requestedHours = Math.min(168, Math.max(1, Number.isFinite(query.hours) ? query.hours : 1))
-  const apiHours = [1, 6, 12, 24, 48, 96, 168].find(value => value >= requestedHours) ?? 168
+  const apiHours = [0.167, 0.5, 1, 6, 12, 24, 48, 96, 168].find(value => value >= requestedHours) ?? 168
   const url = `/api/history/all?id=${encodeURIComponent(String(id))}&hours=${apiHours}`
   const cacheKey = `${url}|window=${requestedHours}`
   const cached = historyCache.get(cacheKey)
