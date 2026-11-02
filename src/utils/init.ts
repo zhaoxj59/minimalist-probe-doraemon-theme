@@ -51,7 +51,7 @@ class InitManager {
     }
   }
 
-  /** /api/me、主题设置、/api/nodes 三者并行，任一失败不阻断其他 */
+  /** 站点配置、访客状态和 CFSM 服务器列表并行加载，任一请求失败不阻断其他 */
   private async runStartupRequests(): Promise<boolean> {
     const api = getSharedApi()
     const [, , nodesResult] = await Promise.allSettled([
