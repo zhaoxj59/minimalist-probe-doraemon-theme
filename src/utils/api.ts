@@ -18,9 +18,9 @@ export interface PublicSettings {
   sitename: string
   /** 公开状态页是否开放 */
   public_page: boolean
-  /** 延迟历史最多可查的小时数（匿名 168，登录后 2160） */
+  /** CFSM 公开 API 当前支持的延迟历史查询小时数 */
   ping_record_preserve_time?: number
-  /** 负载历史最多可查的小时数（匿名 168，登录后 2160） */
+  /** CFSM 公开 API 当前支持的负载历史查询小时数 */
   record_preserve_time?: number
   /** 站长在面板里保存的主题设置，已按 theme.json 补齐默认值 */
   theme_settings?: Record<string, unknown> | null
