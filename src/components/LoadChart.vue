@@ -918,6 +918,19 @@ const diskIoChartSeries = computed<MetricChartSeriesData[]>(() => [
   recordMetricSeries('磁盘写入', metricSeriesColors[1]!, 'bytesPerSecond', record => record.disk_write_bps),
 ].filter(seriesHasData))
 
+const diskIopsChartSeries = computed<MetricChartSeriesData[]>(() => [
+  recordMetricSeries('读取 IOPS', metricSeriesColors[0]!, 'count', record => record.disk_read_iops),
+  recordMetricSeries('写入 IOPS', metricSeriesColors[1]!, 'count', record => record.disk_write_iops),
+].filter(seriesHasData))
+
+const diskAwaitChartSeries = computed<MetricChartSeriesData[]>(() => [
+  recordMetricSeries('平均等待时间', metricSeriesColors[2]!, 'milliseconds', record => record.disk_await_ms),
+].filter(seriesHasData))
+
+const diskUtilChartSeries = computed<MetricChartSeriesData[]>(() => [
+  recordMetricSeries('磁盘繁忙度', metricSeriesColors[3]!, 'percent', record => record.disk_util),
+].filter(seriesHasData))
+
 const gpuMemoryChartSeries = computed<MetricChartSeriesData[]>(() => gpuDeviceEntries().flatMap((device, index) => {
   const used = recordMetricSeries(
     `${device.name} 已用`,
@@ -1832,11 +1845,36 @@ onMounted(() => {
         </CardX>
 
         <MetricSeriesChartCard
-          v-if="diskIoChartSeries.length"
+          v-if="isChartCardEnabled('disk') && diskIoChartSeries.length"
           title="磁盘 IO 读写速度"
           icon="tabler:database"
           tone="emerald"
           :series="diskIoChartSeries"
+        />
+
+        <MetricSeriesChartCard
+          v-if="isChartCardEnabled('disk') && diskIopsChartSeries.length"
+          title="磁盘 IOPS"
+          icon="tabler:activity"
+          tone="emerald"
+          :series="diskIopsChartSeries"
+        />
+
+        <MetricSeriesChartCard
+          v-if="isChartCardEnabled('disk') && diskAwaitChartSeries.length"
+          title="磁盘 IO 等待时间"
+          icon="tabler:clock"
+          tone="amber"
+          :series="diskAwaitChartSeries"
+        />
+
+        <MetricSeriesChartCard
+          v-if="isChartCardEnabled('disk') && diskUtilChartSeries.length"
+          title="磁盘 IO 利用率"
+          icon="tabler:gauge"
+          tone="orange"
+          :series="diskUtilChartSeries"
+          :percent-scale="true"
         />
 
         <!-- 网络卡片 -->
