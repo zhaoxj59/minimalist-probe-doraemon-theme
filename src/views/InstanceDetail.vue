@@ -458,8 +458,10 @@ function getDetailMetricCard(key: DetailMetricCardKey): MetricCard {
     case 'cpuUsage':
       return { key, label: '竹蜻蜓转速 · CPU', value: (node?.cpu ?? 0).toFixed(1), unit: '%', icon: 'tabler:propeller' }
     case 'gpuUsage': {
-      const hasGpu = Boolean(node?.gpu_name?.trim()) || (node?.gpu ?? 0) > 0
-      return { key, label: 'GPU 使用率', value: hasGpu ? (node?.gpu ?? 0).toFixed(1) : '-', unit: hasGpu ? '%' : undefined, icon: 'tabler:device-desktop-analytics', tooltip: node?.gpu_name?.trim() || undefined }
+      const gpuUsage = node?.gpu
+      const hasGpu = Boolean(node?.gpu_name?.trim()) || (typeof gpuUsage === 'number' && Number.isFinite(gpuUsage))
+      const hasGpuUsage = typeof gpuUsage === 'number' && Number.isFinite(gpuUsage)
+      return { key, label: 'GPU 使用率', value: hasGpuUsage ? gpuUsage.toFixed(1) : '-', unit: hasGpuUsage ? '%' : undefined, icon: 'tabler:device-desktop-analytics', tooltip: node?.gpu_name?.trim() || undefined }
     }
     case 'memoryUsage':
       return { key, label: '四次元口袋 · 内存', value: memoryUsage === null ? '-' : memoryUsage.toFixed(1), unit: memoryUsage === null ? undefined : '%', icon: 'mdi:pocket', tooltip: `${formatBytes(node?.ram ?? 0)} / ${formatBytes(node?.mem_total ?? 0)}` }
