@@ -33,6 +33,8 @@ class InitManager {
     if (this.isInitialized)
       return
 
+    document.addEventListener('visibilitychange', this.handleVisibilityChange)
+
     try {
       await this.runStartupRequests()
       if (this.destroyed || this.redirecting)
@@ -123,7 +125,7 @@ class InitManager {
   }
 
   private connectWebSocket(): void {
-    if (this.destroyed || !this.useWebSocket)
+    if (this.destroyed || !this.useWebSocket || document.hidden)
       return
 
     this.nodesStore.updateWsState('connecting', this.nodesStore.wsReconnectAttempts)
@@ -141,7 +143,7 @@ class InitManager {
       },
       onClose: () => {
         this.socket = null
-        if (this.destroyed || !this.useWebSocket)
+        if (this.destroyed || !this.useWebSocket || document.hidden)
           return
         // 登录会话失效或公开页被关闭时 hub 会主动断开，重新确认一次登录状态
         void getSharedApi().getMe().then(me => this.appStore.updateLoginState(me.logged_in, me)).catch(() => {})
@@ -152,7 +154,7 @@ class InitManager {
   }
 
   private scheduleReconnect(wasOpen: boolean): void {
-    if (this.destroyed || this.reconnectTimer)
+    if (this.destroyed || document.hidden || this.reconnectTimer)
       return
 
     const attempts = wasOpen ? 0 : this.nodesStore.wsReconnectAttempts
@@ -183,6 +185,8 @@ class InitManager {
   private schedulePoll(): void {
     if (this.pollTimer)
       clearTimeout(this.pollTimer)
+    if (document.hidden || this.destroyed)
+      return
     this.pollTimer = setTimeout(async () => {
       await this.poll()
       if (!this.destroyed && !this.useWebSocket)
@@ -209,8 +213,37 @@ class InitManager {
     }
   }
 
+  private handleVisibilityChange = (): void => {
+    if (document.hidden) {
+      if (this.pollTimer) {
+        clearTimeout(this.pollTimer)
+        this.pollTimer = null
+      }
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer)
+        this.reconnectTimer = null
+      }
+      this.socket?.close()
+      this.socket = null
+      this.nodesStore.updateWsState('disconnected')
+      return
+    }
+
+    if (this.destroyed || !this.isInitialized)
+      return
+    void this.runStartupRequests().then((recovered) => {
+      if (!recovered || this.destroyed)
+        return
+      if (this.useWebSocket)
+        this.connectWebSocket()
+      else
+        this.schedulePoll()
+    })
+  }
+
   destroy(): void {
     this.destroyed = true
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange)
     if (this.pollTimer) {
       clearTimeout(this.pollTimer)
       this.pollTimer = null
