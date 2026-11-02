@@ -27,6 +27,7 @@ export interface HubMetrics {
   uptime?: number
   cpu?: number
   load?: number[]
+  gpu?: number
   mem_total?: number
   mem_used?: number
   swap_total?: number
@@ -59,6 +60,7 @@ export interface HubNode {
   arch?: string
   virt?: string
   cpu_name?: string
+  gpu_name?: string
   cpu_cores?: number
   mem_total?: number
   swap_total?: number
@@ -286,6 +288,22 @@ function mapCfServer(raw: Record<string, any>): HubNode {
   const text = (v: unknown) => typeof v === 'string' ? v : ''
   // CFSM reports RAM / Swap / Disk capacities in MiB; the theme's formatBytes expects bytes.
   const mib = (v: unknown) => num(v) * 1024 * 1024
+  let gpuItems: Array<Record<string, any>> = []
+  if (Array.isArray(raw.gpu_info))
+    gpuItems = raw.gpu_info
+  else if (typeof raw.gpu_info === 'string' && raw.gpu_info.trim()) {
+    try {
+      const parsed = JSON.parse(raw.gpu_info)
+      if (Array.isArray(parsed))
+        gpuItems = parsed
+    }
+    catch {
+      gpuItems = []
+    }
+  }
+  const gpuUsages = gpuItems.map(item => Number(item.info)).filter(value => Number.isFinite(value))
+  const gpuAverage = gpuUsages.length ? gpuUsages.reduce((sum, value) => sum + value, 0) / gpuUsages.length : undefined
+  const gpuName = gpuItems.map(item => typeof item.name === 'string' ? item.name.trim() : '').filter(Boolean).join(', ')
   const onlineValue = raw.is_online ?? raw.online
   const online = onlineValue === true || onlineValue === 1 || onlineValue === '1'
   const rawTimestamp = raw.last_updated ?? raw.timestamp
@@ -304,7 +322,7 @@ function mapCfServer(raw: Record<string, any>): HubNode {
     id, name: text(raw.name) || id, country: text(raw.region), group: text(raw.server_group),
     sort: num(raw.sort_order), public: !(raw.is_hidden === true || raw.is_hidden === 1 || raw.is_hidden === '1'),
     online, last_seen: timestamp > 1e12 ? timestamp / 1000 : timestamp,
-    os: text(raw.os), kernel: text(raw.kernel_version), arch: text(raw.arch), cpu_name: text(raw.cpu_info),
+    os: text(raw.os), kernel: text(raw.kernel_version), arch: text(raw.arch), cpu_name: text(raw.cpu_info), gpu_name: gpuName,
     cpu_cores: num(raw.cpu_cores), mem_total: mib(raw.ram_total), swap_total: mib(raw.swap_total),
     disk_total: mib(raw.disk_total), agent_version: text(raw.agent_version), price: num(raw.price),
     currency: text(raw.currency), billing_cycle: text(raw.billing_cycle), expires_at: text(raw.expire_date) || null,
@@ -314,7 +332,7 @@ function mapCfServer(raw: Record<string, any>): HubNode {
     ipv4: text(raw.ip_v4) && text(raw.ip_v4) !== '0' ? text(raw.ip_v4) : '',
     ipv6: text(raw.ip_v6) && text(raw.ip_v6) !== '0' ? text(raw.ip_v6) : '',
     metrics: {
-      cpu: raw.cpu == null ? Number.NaN : num(raw.cpu), load, mem_total: mib(raw.ram_total), mem_used: mib(raw.ram_used),
+      cpu: raw.cpu == null ? Number.NaN : num(raw.cpu), load, gpu: gpuAverage, mem_total: mib(raw.ram_total), mem_used: mib(raw.ram_used),
       swap_total: mib(raw.swap_total), swap_used: mib(raw.swap_used), disk_total: mib(raw.disk_total),
       disk_used: mib(raw.disk_used), net_rx: num(raw.net_in_speed), net_tx: num(raw.net_out_speed),
       tcp: num(raw.tcp_conn), udp: num(raw.udp_conn), procs: num(raw.processes),
@@ -640,6 +658,7 @@ export function hubNodeToClient(node: HubNode): Client {
     uuid: String(node.id),
     name: str(node.name) || `#${node.id}`,
     cpu_name: str(node.cpu_name),
+    gpu_name: str(node.gpu_name) || undefined,
     virtualization: str(node.virt),
     arch: str(node.arch),
     cpu_cores: num(node.cpu_cores),
@@ -687,7 +706,7 @@ export function hubNodeToStatus(node: HubNode): NodeStatus {
     client: String(node.id),
     time: lastSeen > 0 ? new Date(lastSeen * 1000).toISOString() : '',
     cpu: num(metrics?.cpu),
-    gpu: 0,
+    gpu: num(metrics?.gpu),
     ram: num(metrics?.mem_used),
     ram_total: num(metrics?.mem_total, num(node.mem_total)),
     swap: num(metrics?.swap_used),
