@@ -1,7 +1,7 @@
 /**
  * 站点信息、登录状态与主题设置
  *
- * 对应 hub 的 GET /api/me 与 GET /api/themes/{short}/config。
+ * 对应 CF-Server-Monitor 的 GET /api/config。
  * 保留主题原有的 MeInfo / PublicSettings 结构，界面代码按原样读取。
  */
 
