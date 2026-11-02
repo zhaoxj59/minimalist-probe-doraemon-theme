@@ -315,9 +315,9 @@ function mapCfServer(raw: Record<string, any>): HubNode {
   const timestamp = Number.isFinite(timestampValue) ? timestampValue : 0
   const load = Array.isArray(raw.load_avg)
     ? raw.load_avg.map(Number).filter(Number.isFinite)
-    : typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(/[ ,]+/).map(Number).filter(Number.isFinite) : []
+    : typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(LOAD_AVG_SPLIT_REGEX).map(Number).filter(Number.isFinite) : []
   const trafficText = text(raw.traffic_limit)
-  const match = trafficText.match(/^([\d.]+)\s*(B|KB|MB|GB|TB)$/i)
+  const match = trafficText.match(TRAFFIC_LIMIT_REGEX)
   const trafficLimit = match
     ? Number(match[1]) * ({ B: 1, KB: 1024, MB: 1024 ** 2, GB: 1024 ** 3, TB: 1024 ** 4 }[match[2].toUpperCase() as 'B' | 'KB' | 'MB' | 'GB' | 'TB'])
     : num(raw.traffic_limit)
@@ -431,54 +431,6 @@ export async function loadThemeConfig(): Promise<Record<string, unknown>> {
     // 配置接口不可用时仍使用主题默认值
   }
   return Object.fromEntries(configFields.map(field => [field.key, fits(field, saved[field.key]) ? saved[field.key] : field.default]))
-}
-
-// ==================== 历史查询队列 ====================
-
-/**
- * hub 同时只处理 4 个历史查询，超出直接返回 503。首页每张节点卡片都会取延迟历史，
- * 所以这里在浏览器侧排队，最多并行 3 个，并在 503 时退避重试。
- */
-const HISTORY_CONCURRENCY = 3
-const HISTORY_RETRIES = 4
-let historyActive = 0
-const historyWaiters: Array<() => void> = []
-
-async function acquireHistorySlot(signal?: AbortSignal): Promise<void> {
-  if (historyActive < HISTORY_CONCURRENCY) {
-    historyActive += 1
-    return
-  }
-  await new Promise<void>((resolve, reject) => {
-    function grant(): void {
-      signal?.removeEventListener('abort', onAbort)
-      historyActive += 1
-      resolve()
-    }
-    function onAbort(): void {
-      const index = historyWaiters.indexOf(grant)
-      if (index >= 0)
-        historyWaiters.splice(index, 1)
-      reject(signal?.reason ?? new DOMException('Aborted', 'AbortError'))
-    }
-    historyWaiters.push(grant)
-    signal?.addEventListener('abort', onAbort, { once: true })
-  })
-}
-
-function releaseHistorySlot(): void {
-  historyActive = Math.max(0, historyActive - 1)
-  historyWaiters.shift()?.()
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms)
-    signal?.addEventListener('abort', () => {
-      clearTimeout(timer)
-      reject(signal.reason ?? new DOMException('Aborted', 'AbortError'))
-    }, { once: true })
-  })
 }
 
 /** CFSM 历史 API：匿名访问最多 24 小时；已验证管理员可查询至 168 小时（7 天）。 */
@@ -634,6 +586,9 @@ export function getKnownProbes(): Array<{ id: number, name: string }> {
 const COUNTRY_CODE_REGEX = /^[A-Z]{2}$/
 const MONTH_CYCLE_REGEX = /^\d+m$/
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
+const LOAD_AVG_SPLIT_REGEX = /[ ,]+/
+const TRAFFIC_LIMIT_REGEX = /^([\d.]+)\s*(B|KB|MB|GB|TB)$/i
+const ISO_CURRENCY_REGEX = /^[A-Z]{3}$/
 
 function num(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
@@ -674,7 +629,7 @@ export function currencySymbol(code: string | undefined): string {
   const cc = raw.toUpperCase()
   // CF-Server-Monitor 的 currency 可能直接返回 ¥、$、HK$ 等符号，
   // 也可能返回 CNY、USD 等 ISO 代码；符号应原样保留。
-  if (!/^[A-Z]{3}$/.test(cc))
+  if (!ISO_CURRENCY_REGEX.test(cc))
     return raw
   return CURRENCY_SYMBOL[cc] ?? `${cc} `
 }
