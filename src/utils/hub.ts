@@ -324,13 +324,19 @@ function mapCfServer(raw: Record<string, any>): HubNode {
   const gpuUsages = gpuItems.map(item => item.info == null || item.info === '' ? Number.NaN : Number(item.info)).filter(value => Number.isFinite(value))
   const gpuAverage = gpuUsages.length ? gpuUsages.reduce((sum, value) => sum + value, 0) / gpuUsages.length : undefined
   const gpuName = gpuItems.map(item => typeof item.name === 'string' ? item.name.trim() : '').filter(Boolean).join(', ')
-  const onlineValue = raw.is_online ?? raw.online
-  const online = onlineValue === true || onlineValue === 1 || onlineValue === '1'
   const rawTimestamp = raw.last_updated ?? raw.timestamp
   const timestampValue = typeof rawTimestamp === 'string' && !Number.isFinite(Number(rawTimestamp))
     ? Date.parse(rawTimestamp)
     : num(rawTimestamp)
   const timestamp = Number.isFinite(timestampValue) ? timestampValue : 0
+
+  // CFSM /api/servers 的部分版本只在 stats 中计算在线数，
+  // servers[] 未附带 is_online。此时按官方口径用最近 5 分钟上报时间兜底。
+  const onlineValue = raw.is_online ?? raw.online
+  const hasExplicitOnline = onlineValue !== undefined && onlineValue !== null
+  const online = hasExplicitOnline
+    ? onlineValue === true || onlineValue === 1 || onlineValue === '1'
+    : timestamp > 0 && Date.now() - (timestamp > 1e12 ? timestamp : timestamp * 1000) < 300000
   const load = Array.isArray(raw.load_avg)
     ? raw.load_avg.map(Number).filter(Number.isFinite)
     : typeof raw.load_avg === 'string' ? raw.load_avg.trim().split(LOAD_AVG_SPLIT_REGEX).map(Number).filter(Number.isFinite) : []
