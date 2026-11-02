@@ -174,6 +174,7 @@ export async function fetchMe(signal?: AbortSignal): Promise<HubMe> {
 }
 
 let cfServerIds: string[] = []
+let cfSysConfig: Record<string, any> = {}
 
 /** 判断节点是否来自 CF-Server-Monitor，避免误请求旧探针历史接口。 */
 export function isCfServer(id: string | number): boolean {
@@ -355,6 +356,7 @@ export async function fetchNodeDetail(id: string | number, signal?: AbortSignal)
   if (!raw || (typeof raw.id !== 'string' && typeof raw.id !== 'number'))
     throw new HubError(502, 'Invalid server detail response')
   const sysConfig = response.sysConfig && typeof response.sysConfig === 'object' ? response.sysConfig : {}
+  cfSysConfig = sysConfig
   const node = mapCfServer(raw)
   if (!cfServerIds.includes(String(node.id)))
     cfServerIds.push(String(node.id))
@@ -370,6 +372,7 @@ export async function fetchNodeDetail(id: string | number, signal?: AbortSignal)
 export async function fetchNodes(signal?: AbortSignal): Promise<HubSnapshot> {
   const data = await getJson<{ servers?: Array<Record<string, any>>, sysConfig?: Record<string, any> }>('/api/servers', signal)
   const sysConfig = data.sysConfig && typeof data.sysConfig === 'object' ? data.sysConfig : {}
+  cfSysConfig = sysConfig
   const nodes: HubNode[] = (Array.isArray(data.servers) ? data.servers : []).map(mapCfServer)
   cfServerIds = nodes.map(node => String(node.id))
   cfPingHistory.clear()
@@ -492,9 +495,6 @@ const historyCache = new Map<string, { at: number, promise: Promise<HubHistory> 
 const HISTORY_CACHE_MS = 15_000
 
 export function fetchNodeHistory(id: string | number, query: HistoryQuery, signal?: AbortSignal): Promise<HubHistory> {
-  if (query.series === 'ping')
-    return Promise.resolve(cfPingHistory.get(String(id)) ?? { metrics: [], ping: [], probes: {}, loss: {} })
-
   const hours = Math.min(24, Math.max(1, Math.floor(query.hours)))
   const url = `/api/history/all?id=${encodeURIComponent(String(id))}&hours=${hours}`
   const cached = historyCache.get(url)
@@ -506,7 +506,8 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
       const n = typeof v === 'string' ? Number(v) : v
       return typeof n === 'number' && Number.isFinite(n) ? n : Number.NaN
     }
-    const metrics = (Array.isArray(rows) ? rows : []).map(row => ({
+    const historyRows = Array.isArray(rows) ? rows : []
+    const metrics = historyRows.map(row => ({
       ts: (() => {
         const value = row.timestamp
         const parsed = typeof value === 'string' && !Number.isFinite(Number(value)) ? Date.parse(value) : num(value)
@@ -519,8 +520,72 @@ export function fetchNodeHistory(id: string | number, query: HistoryQuery, signa
       disk_await_ms: num(row.disk_await_ms), disk_util: num(row.disk_util),
       gpu_info: row.gpu_info ?? null,
     })).filter(row => Number.isFinite(row.ts) && row.ts > 0)
-    // CFSM 的此接口提供性能历史；没有提供历史探测曲线时不伪造 ping 数据。
-    return { metrics, ping: [], probes: {}, loss: {} } satisfies HubHistory
+    // CFSM 历史行也包含固定的运营商 / 自定义 Ping 字段；只转换真实存在的采样。
+    const probes: Record<string, string> = {}
+    const lossSamples = new Map<number, number[]>()
+    const ping: HubPingRow[] = []
+    for (const field of CF_PROBE_FIELDS) {
+      const configuredName = cfSysConfig[field.config]
+      const name = typeof configuredName === 'string' && configuredName.trim() ? configuredName.trim() : field.fallback
+      let hasSample = false
+      for (const row of historyRows) {
+        const rawValue = row[field.ping]
+        if (rawValue === false || rawValue === 'false' || rawValue === undefined)
+          continue
+        const rawTs = row.timestamp
+        const parsedTs = typeof rawTs === 'string' && !Number.isFinite(Number(rawTs)) ? Date.parse(rawTs) : num(rawTs)
+        const ts = parsedTs > 1e12 ? parsedTs / 1000 : parsedTs
+        if (!Number.isFinite(ts) || ts <= 0)
+          continue
+        let latency: number | null
+        if (rawValue === null) {
+          latency = null
+        }
+        else {
+          const parsedValue = num(rawValue)
+          if (!Number.isFinite(parsedValue))
+            continue
+          latency = parsedValue
+        }
+        hasSample = true
+        const rowPing: HubPingRow = { task_id: field.id, ts, latency }
+        const rawLoss = row[field.loss]
+        if (rawLoss !== false && rawLoss !== 'false' && rawLoss !== undefined && rawLoss !== null) {
+          const parsedLoss = num(rawLoss)
+          if (Number.isFinite(parsedLoss)) {
+            rowPing.loss = parsedLoss
+            const values = lossSamples.get(field.id) ?? []
+            values.push(parsedLoss)
+            lossSamples.set(field.id, values)
+          }
+        }
+        ping.push(rowPing)
+      }
+      if (hasSample)
+        probes[String(field.id)] = name
+    }
+
+    // 与 /api/servers 的近期窗口合并，按探测 ID + 时间戳去重，保留真实上报时间。
+    const current = cfPingHistory.get(String(id))
+    const pingKeys = new Set(ping.map(row => `${row.task_id}:${row.ts}`))
+    for (const row of current?.ping ?? []) {
+      const key = `${row.task_id}:${row.ts}`
+      if (!pingKeys.has(key)) {
+        ping.push(row)
+        pingKeys.add(key)
+      }
+    }
+    for (const [probeId, name] of Object.entries(current?.probes ?? {}))
+      probes[probeId] ??= name
+    const loss: Record<string, number> = {}
+    for (const [probeId, values] of lossSamples) {
+      if (values.length)
+        loss[String(probeId)] = values.reduce((sum, value) => sum + value, 0) / values.length
+    }
+    for (const [probeId, value] of Object.entries(current?.loss ?? {}))
+      loss[probeId] ??= value
+
+    return { metrics, ping: ping.sort((a, b) => a.ts - b.ts), probes, loss } satisfies HubHistory
   })()
   historyCache.set(url, { at: Date.now(), promise })
   promise.catch(() => {
