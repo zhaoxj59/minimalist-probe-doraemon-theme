@@ -468,11 +468,13 @@ const useNodesStore = defineStore('nodes', () => {
     const existing = nodeIndex.get(client.uuid)
     if (existing) {
       applyClient(existing, client)
-      if (status) applyStatus(existing, status)
+      if (status)
+        applyStatus(existing, status)
       return
     }
     const node = createNodeFromClient(client)
-    if (status) applyStatus(node, status)
+    if (status)
+      applyStatus(node, status)
     addIndexedNode(node)
     sortNodesByWeight()
   }
