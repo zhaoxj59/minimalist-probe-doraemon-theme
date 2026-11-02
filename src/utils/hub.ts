@@ -13,6 +13,10 @@
 import type { Client, NodeStatus } from '@/utils/rpc'
 import manifest from '../../theme.json'
 
+// 提前声明供节点字段转换使用的正则，避免使用位置早于定义。
+const LOAD_AVG_SPLIT_REGEX = /[ ,]+/
+const TRAFFIC_LIMIT_REGEX = /^([\d.]+)\s*(B|KB|MB|GB|TB)$/i
+
 // ==================== hub 响应类型 ====================
 
 export interface HubMe {
@@ -586,8 +590,6 @@ export function getKnownProbes(): Array<{ id: number, name: string }> {
 const COUNTRY_CODE_REGEX = /^[A-Z]{2}$/
 const MONTH_CYCLE_REGEX = /^\d+m$/
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
-const LOAD_AVG_SPLIT_REGEX = /[ ,]+/
-const TRAFFIC_LIMIT_REGEX = /^([\d.]+)\s*(B|KB|MB|GB|TB)$/i
 const ISO_CURRENCY_REGEX = /^[A-Z]{3}$/
 
 function num(value: unknown, fallback = 0): number {
