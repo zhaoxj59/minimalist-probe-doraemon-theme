@@ -15,6 +15,8 @@ import { LOAD_RECORD_MAX_COUNT } from '@/constants/load'
 import { loadNodeLoadRecords } from '@/services/history.service'
 import { useAppStore } from '@/stores/app'
 import { useNodesStore } from '@/stores/nodes'
+import { fetchNodeDetail } from '@/utils/hub'
+import { snapshotToMaps } from '@/utils/rpc'
 import { formatCityNameZh } from '@/utils/cityNameHelper'
 import { getCpuBenchmarkRating, getPassMarkCpuLookupUrl } from '@/utils/cpuBenchmark'
 import * as financeHelper from '@/utils/financeHelper'
@@ -94,6 +96,25 @@ onMounted(async () => {
   const { rates } = await financeHelper.getDailyExchangeRates()
   exchangeRates.value = rates
 })
+
+// 详情页独立读取单台服务器。这里仅 upsert 当前节点，绝不把单节点响应传给全量初始化方法。
+watch(() => String(route.params.id ?? ''), async (id, _previous, onCleanup) => {
+  if (!id)
+    return
+  const controller = new AbortController()
+  onCleanup(() => controller.abort())
+  try {
+    const snapshot = await fetchNodeDetail(id, controller.signal)
+    const { clients, statuses } = snapshotToMaps(snapshot)
+    const client = clients[id]
+    if (client)
+      nodesStore.upsertSingleNode(client, statuses[id])
+  }
+  catch (error) {
+    if (!(error instanceof DOMException && error.name === 'AbortError'))
+      console.warn('[CFSM] failed to load server detail', error)
+  }
+}, { immediate: true })
 
 // 当节点数据加载后尝试获取厂商信息
 // 注：节点 IP 通常不直接暴露，这里用节点 uuid 作为 fallback 标识
