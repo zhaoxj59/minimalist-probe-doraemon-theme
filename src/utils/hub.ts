@@ -163,6 +163,11 @@ export async function fetchMe(signal?: AbortSignal): Promise<HubMe> {
 }
 
 let cfServerIds: string[] = []
+
+/** 判断节点是否来自 CF-Server-Monitor，避免误请求旧探针历史接口。 */
+export function isCfServer(id: string | number): boolean {
+  return cfServerIds.includes(String(id))
+}
 const cfPingHistory = new Map<string, HubHistory>()
 
 const CF_PROBE_FIELDS = [
