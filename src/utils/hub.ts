@@ -155,9 +155,54 @@ export async function fetchMe(signal?: AbortSignal): Promise<HubMe> {
 }
 
 let cfServerIds: string[] = []
+const cfPingHistory = new Map<string, HubHistory>()
+
+const CF_PROBE_FIELDS = [
+  { id: 1, ping: 'ping_ct', loss: 'loss_ct', config: 'custom_ct_name', fallback: '电信' },
+  { id: 2, ping: 'ping_cu', loss: 'loss_cu', config: 'custom_cu_name', fallback: '联通' },
+  { id: 3, ping: 'ping_cm', loss: 'loss_cm', config: 'custom_cm_name', fallback: '移动' },
+  { id: 4, ping: 'ping_bd', loss: 'loss_bd', config: 'custom_bd_name', fallback: 'BGP' },
+  { id: 5, ping: 'ping_node_1', loss: 'loss_node_1', config: 'node_1_name', fallback: '节点 1' },
+  { id: 6, ping: 'ping_node_2', loss: 'loss_node_2', config: 'node_2_name', fallback: '节点 2' },
+  { id: 7, ping: 'ping_node_3', loss: 'loss_node_3', config: 'node_3_name', fallback: '节点 3' },
+  { id: 8, ping: 'ping_node_4', loss: 'loss_node_4', config: 'node_4_name', fallback: '节点 4' },
+] as const
+
+function buildCurrentPingHistory(raw: Record<string, any>, sysConfig: Record<string, any>): HubHistory {
+  const rawTimestamp = raw.last_updated ?? raw.timestamp
+  const parsed = typeof rawTimestamp === 'string' && !Number.isFinite(Number(rawTimestamp))
+    ? Date.parse(rawTimestamp) : Number(rawTimestamp)
+  const ts = Number.isFinite(parsed) && parsed > 0
+    ? (parsed > 1e12 ? parsed / 1000 : parsed)
+    : Date.now() / 1000
+  const probes: Record<string, string> = {}
+  const loss: Record<string, number> = {}
+  const ping: HubPingRow[] = []
+
+  for (const probe of CF_PROBE_FIELDS) {
+    const value = raw[probe.ping]
+    const lossValue = raw[probe.loss]
+    if (value === false || value === undefined)
+      continue
+    if (value !== null && !(typeof value === 'number' && Number.isFinite(value)))
+      continue
+    const name = typeof sysConfig[probe.config] === 'string' && sysConfig[probe.config].trim()
+      ? sysConfig[probe.config].trim() : probe.fallback
+    probes[String(probe.id)] = name
+    const row: HubPingRow = { task_id: probe.id, ts, latency: value }
+    if (typeof lossValue === 'number' && Number.isFinite(lossValue))
+      row.loss = lossValue
+    ping.push(row)
+    if (typeof lossValue === 'number' && Number.isFinite(lossValue))
+      loss[String(probe.id)] = lossValue
+  }
+
+  return { metrics: [], ping, probes, loss }
+}
 
 export async function fetchNodes(signal?: AbortSignal): Promise<HubSnapshot> {
-  const data = await getJson<{ servers?: Array<Record<string, any>> }>('/api/servers', signal)
+  const data = await getJson<{ servers?: Array<Record<string, any>>, sysConfig?: Record<string, any> }>('/api/servers', signal)
+  const sysConfig = data.sysConfig && typeof data.sysConfig === 'object' ? data.sysConfig : {}
   const nodes: HubNode[] = (Array.isArray(data.servers) ? data.servers : []).map((raw) => {
     const id = String(raw.id)
     const num = (v: unknown) => {
@@ -202,6 +247,13 @@ export async function fetchNodes(signal?: AbortSignal): Promise<HubSnapshot> {
     }
   })
   cfServerIds = nodes.map(node => String(node.id))
+  cfPingHistory.clear()
+  for (const raw of Array.isArray(data.servers) ? data.servers : []) {
+    const id = String(raw.id)
+    const history = buildCurrentPingHistory(raw, sysConfig)
+    cfPingHistory.set(id, history)
+    rememberProbes(history)
+  }
   return { nodes }
 }
 
@@ -315,7 +367,10 @@ const historyCache = new Map<string, { at: number, promise: Promise<HubHistory> 
 const HISTORY_CACHE_MS = 15_000
 
 export function fetchNodeHistory(id: string | number, query: HistoryQuery, signal?: AbortSignal): Promise<HubHistory> {
-  const hours = Math.min(168, Math.max(1, Math.floor(query.hours)))
+  if (query.series === 'ping')
+    return Promise.resolve(cfPingHistory.get(String(id)) ?? { metrics: [], ping: [], probes: {}, loss: {} })
+
+  const hours = Math.min(24, Math.max(1, Math.floor(query.hours)))
   const url = `/api/history/all?id=${encodeURIComponent(String(id))}&hours=${hours}`
   const cached = historyCache.get(url)
   if (cached && Date.now() - cached.at < HISTORY_CACHE_MS)
